@@ -42,6 +42,7 @@ int main()
     // SA(suffixarray) ESA FM (DIES SIND TAGS) statt FAIIndex
     // INDEX AUCH AUF FESTPLATTE SPEICHERN! ANDERE APP LIEST EIN
     // indexrequire aufrufen. index wird erst gebaut wenn genutzt!
+    // alles klar?
     clear(finder);
     while (find(finder, pat)) {
         std::cout << '[' << beginPosition(finder) << '.' << endPosition(finder) << ']'<< std::endl;
