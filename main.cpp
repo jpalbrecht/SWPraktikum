@@ -113,8 +113,6 @@ int main() {
                 std::cout << '[' << beginPosition(finder) << '.' << endPosition(finder) << ']' << std::endl;
             }
         }
-
-
     }
 
 /*    Dna5String patDNA = "TAAGAG";
