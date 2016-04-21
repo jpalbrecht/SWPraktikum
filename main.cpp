@@ -13,6 +13,7 @@ using namespace seqan;
 
 /* Function to read a FastaFile in & building/saving Index-Structure of content in file.
  * Returns true if file could be read and index could be built/wrote to disk, otherwise false
+ *
  * Syntax:
  *   int erg = buildIndex(CharString fileIn, CharString fileOut);
   *
@@ -78,6 +79,7 @@ static int buildIndex(CharString fileIn, CharString fileOut) {
  *  First Gaps and Last Gaps will be ignored. The Function takes
  *  only one Input arguments, the Alignment Object over two DNA-Strings.
  *  Output will be  String< CigarElement<> > with the CIGAR-Format.
+ *
  * Syntax:
  *   String< CigarElement<> > cig = getCigar(Align<Dna5String, ArrayGaps> align);
  *
@@ -174,7 +176,25 @@ static String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> align){
     }
     return cigar;
 }
-
+/* Main Function of ReadMapper Project
+ *
+ * Syntax:
+ *
+ * Inputs:
+ *
+ * Outputs:
+ *
+ * Example:
+ *
+ * Other header files required: <iostream>, <vector>, <seqan/seq_io.h>, <seqan/index.h>, <seqan/seeds.h>
+ * Subfunctions: getCigar, buildIndex
+ *
+ * See also: getCigar, buildIndex
+ * Author: Jan Philipp Albrecht
+ * Work address:
+ * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
+ * Website: https://github.com/jpalbrecht/SWPraktikum
+ */
 int main() {
 //------------ Read Index & Reads read Genome & build/save Index
 //    if (!buildIndex("/home/phil/Dokumente/ALBIPraktikum/random10M.fasta",
@@ -214,6 +234,27 @@ int main() {
 
 
 
+    //------------  define files for writing out & write Header
+    CharString bamFileName = "/home/phil/Dokumente/ALBIPraktikum/testBAM";
+    BamFileIn bamFileIn;
+    std::ofstream bamFile;
+    bamFile.open (toCString(bamFileName));
+    BamFileOut bamFileOut(context(bamFileIn), bamFile, Sam());
+    // Header for BAM File
+    BamHeader bamHeader;
+    BamHeaderRecord bamHeaderRecord;
+    setTagValue("VN","1.3",bamHeaderRecord);
+    setTagValue("SO","unsorted",bamHeaderRecord);
+    setTagValue("SN","ref", bamHeaderRecord);
+    char len[10];
+    sprintf(len,"%ld", length(saIndex));
+    setTagValue("LN",len, bamHeaderRecord);
+    assign(bamHeader,bamHeaderRecord);
+    // write in File
+    writeHeader(bamFileOut,bamHeader);
+
+
+
     //------------ Loop through reads
     typedef Iterator<StringSet<Dna5String> >::Type TIterator;
     for (TIterator readsIt = begin(reads); readsIt != end(reads); ++readsIt) {
@@ -231,17 +272,17 @@ int main() {
         unsigned long beginRefGen;
         unsigned long endRefGen;
         // Loop through seeds
-        for (TIterator readIt = begin(*readsIt); readIt != end(*readsIt);) {
+        for (TIterator seedIt = begin(*readsIt); seedIt != end(*readsIt);) {
             // if rest of read is bigger than 10 letters
-            if ((readIt + 10) <= end(*readsIt)) {
-                seed = infix(*readIt, readIt, readIt + 10);
-                readIt += 10;
+            if ((seedIt + 10) <= end(*readsIt)) {
+                seed = infix(*seedIt, seedIt, seedIt + 10);
+                seedIt += 10;
                 pos += 10;
                 std::cout << "Searching for Seed: " << seed << std::endl;
                 // Discard this part ?... could just be one letter... not good to search in Genome!
             } else { // if rest is not bigger than 10 letters
                 //seed = infix(*readIt, readIt, end(*readsIt));
-                readIt = end(*readsIt);
+                seedIt = end(*readsIt);
                 //std::cout << "Searching for Seed: " << seed << std::endl;
                 break;
             }
@@ -302,7 +343,7 @@ int main() {
 
         } // next seed of read
 
-        // ------------ perform semi-global Alignment for Read at position of best seed
+        // ------------ perform semi-global Alignment for each Read at position of best seed
         // referenceGenome in Match Region with 10 characters additional to each side if possible
         beginRefGen = (bestSeed.at(0) >= 60) ? bestSeed.at(0) - 60 : 0;
         endRefGen = (bestSeed.at(1) + 60 < length(saIndex)) ? bestSeed.at(1) + 60 : length(saIndex);
@@ -318,23 +359,20 @@ int main() {
         std::cout << "" << std::endl;
 
 
+
         // ------------ determine CIGAR Format
         String< CigarElement<> > cig = getCigar(align);
+//        int lengthAlign = 0;
+//        Iterator<String<CigarElement<> > >::Type strIt;
+//        for (strIt = begin(cig);strIt != end(cig); ++strIt){
+//            lengthAlign += (*strIt).count;
+//        }
+//        // typecast
+//        char len[10];
+//        sprintf(len,"%d",lengthAlign);
 
 
-
-        // ------------ write in SAM
-        //CharString bamFileName = "/home/phil/Dokumente/ALBIPraktikum/testBAM";
-        // Create BamHeader for Read
-        BamHeader bamHeader;
-        BamHeaderRecord bamHeaderRecord;
-        setTagValue("VN","1.3",bamHeaderRecord);
-        setTagValue("SO","coordinate",bamHeaderRecord);
-        setTagValue("SN","ref", bamHeaderRecord);
-        setTagValue("LN","130", bamHeaderRecord);
-        assign(bamHeader,bamHeaderRecord);
-
-        // create Alignment Record for Read
+        // ------------ Create AlignmentRecord for BAM-File & write in File
         BamAlignmentRecord bamAlignmentRecord;
         // set recordFlags for read
         char name[10];
@@ -344,14 +382,16 @@ int main() {
         bamAlignmentRecord.beginPos = bestSeed.at(0);                   // Position in RefGen
         bamAlignmentRecord.cigar = cig;                                 // Alignment CIGAR
         bamAlignmentRecord.seq =  *readsIt;                             // Read sequence
-
-        // create Files and write Header and Alignment
-        BamFileIn bamFileIn;
-        BamFileOut bamFileOut(context(bamFileIn), std::cout, Sam());
-        writeHeader(bamFileOut,bamHeader);
+        //write alignment-record in File
         writeRecord(bamFileOut,bamAlignmentRecord);
+
+
+
     }// next read
 
+
+
+    bamFile.close();
     std::cout << " Finished";
     return 1;
 }
