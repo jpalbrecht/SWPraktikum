@@ -1,8 +1,10 @@
 #include <iostream>
 #include <vector>
+#include <ctime>
 #include <seqan/seq_io.h>
 #include <seqan/index.h>
 #include <seqan/seeds.h>
+
 #include <seqan/bam_io.h>
 #include <seqan/find.h>
 #include <seqan/basic.h>
@@ -196,6 +198,9 @@ static String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> align){
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
 int main() {
+    // time for statistics
+    time_t tstart, tend;
+    tstart = time(0);
 //------------ Read Index & Reads read Genome & build/save Index
 //    if (!buildIndex("/home/phil/Dokumente/ALBIPraktikum/random10M.fasta",
 //    "/home/phil/Dokumente/ALBIPraktikum/random10M.inx")){
@@ -217,7 +222,7 @@ int main() {
     //------------ read Reads-Records
     std::cout << "Reading Reads.." << std::endl;
     SeqFileIn rFileIn;
-    if (!open(rFileIn, toCString("/home/phil/Dokumente/ALBIPraktikum/testRead.fasta"))) {
+    if (!open(rFileIn, toCString("/home/phil/Dokumente/ALBIPraktikum/random10M_reads100_10k.fasta"))) {
         std::cerr << "ERROR: Could not read Reads-File!" << std::endl;
     }
     StringSet<Dna5String> reads;
@@ -256,34 +261,34 @@ int main() {
 
 
     //------------ Loop through reads
+    std::cout << "Processing.." << std::endl;
     typedef Iterator<StringSet<Dna5String> >::Type TIterator;
     for (TIterator readsIt = begin(reads); readsIt != end(reads); ++readsIt) {
-        std::cout << "processing Element: " << position(readsIt, reads) << ".." << std::endl;
+//        std::cout << "processing Element: " << position(readsIt, reads) << ".." << std::endl;
 
 
 
         // ------------ cut in small seeds
         Dna5String seed;
-        // building Iterator
         unsigned pos = 0;
-        typedef Iterator<Dna5String>::Type TIterator;
         // building best seed Vector & counting-Variables
         std::vector<unsigned long> bestSeed(3,0);
         unsigned long beginRefGen;
         unsigned long endRefGen;
         // Loop through seeds
+        typedef Iterator<Dna5String>::Type TIterator;
         for (TIterator seedIt = begin(*readsIt); seedIt != end(*readsIt);) {
             // if rest of read is bigger than 10 letters
             if ((seedIt + 10) <= end(*readsIt)) {
                 seed = infix(*seedIt, seedIt, seedIt + 10);
                 seedIt += 10;
                 pos += 10;
-                std::cout << "Searching for Seed: " << seed << std::endl;
+//                std::cout << "Searching for Seed: " << seed << std::endl;
                 // Discard this part ?... could just be one letter... not good to search in Genome!
             } else { // if rest is not bigger than 10 letters
-                //seed = infix(*readIt, readIt, end(*readsIt));
+//              seed = infix(*readIt, readIt, end(*readsIt));
                 seedIt = end(*readsIt);
-                //std::cout << "Searching for Seed: " << seed << std::endl;
+//              std::cout << "Searching for Seed: " << seed << std::endl;
                 break;
             }
 
@@ -297,16 +302,16 @@ int main() {
             // initialize Vector to store seedPosition in
             std::vector<unsigned long> begPos;
             std::vector<unsigned long> begEnd;
-            while (find(finder, pat)) {
+            while (find(finder, pat ) ) {
                 begPos.push_back(beginPosition(finder));
                 begEnd.push_back(endPosition(finder));
-                //std::cout << '[' << beginPosition(finder) << '.' << endPosition(finder) << ']' << std::endl;
+//                std::cout << '[' << beginPosition(finder) << '.' << endPosition(finder) << ']' << std::endl;
             }
             if (begPos.empty()) {
-                std::cout << "nothing Found!.. next seed" << std::endl;
+//                std::cout << "nothing Found!.. next seed" << std::endl;
                 break;
             }
-            std::cout << "Found Seed " << begPos.size() <<" times!" << std::endl;
+//            std::cout << "Found Seed " << begPos.size() <<" times!" << std::endl;
 
 
 
@@ -325,7 +330,7 @@ int main() {
                 // match extension
                 extendSeed(seed1, refGen, *readsIt, EXTEND_BOTH, MatchExtend());
                 matched.push_back(endPositionH(seed1) - beginPositionH(seed1));
-                //std::cout << "matched: " << matched.back() << std::endl;
+//                std::cout << "matched: " << matched.back() << std::endl;
             }// next seed to extend
 
 
@@ -333,7 +338,7 @@ int main() {
             // ------------ save best seed
             std::vector<unsigned long>::iterator bestMatch = std::max_element(matched.begin(), matched.end());
             unsigned long posBestMatch = (unsigned long)std::distance(matched.begin(), bestMatch);
-            std::cout << "best match with " << *bestMatch << " Bases!" << std::endl;
+//          std::cout << "best match with " << *bestMatch << " Bases!" << std::endl;
             // save best seed if better than these before
             if (*bestMatch > bestSeed.back()) {
                 bestSeed.at(0) = begPos.at(posBestMatch);
@@ -354,9 +359,9 @@ int main() {
         assignSource(row(align, 1), *readsIt);
         // do alignment & get score
         int score = globalAlignment(align, Score<int, Simple>(1, -1, 0, -1));
-        std::cout << align << std::endl;
-        std::cout << "Score: " << score << std::endl;
-        std::cout << "" << std::endl;
+//        std::cout << align << std::endl;
+//        std::cout << "Score: " << score << std::endl;
+//        std::cout << "" << std::endl;
 
 
 
@@ -378,12 +383,12 @@ int main() {
         char name[10];
         sprintf(name,"%s%ld","Read_" ,position(readsIt, reads));
         bamAlignmentRecord.qName = name;                                // Record Name
-        bamAlignmentRecord.flag = position(readsIt, reads);             // Record Number
-        bamAlignmentRecord.beginPos = bestSeed.at(0);                   // Position in RefGen
+        bamAlignmentRecord.flag = (uint32_t)position(readsIt, reads);   // Record Number
+        bamAlignmentRecord.beginPos = (int32_t)bestSeed.at(0);          // Position in RefGen
         bamAlignmentRecord.cigar = cig;                                 // Alignment CIGAR
         bamAlignmentRecord.seq =  *readsIt;                             // Read sequence
         //write alignment-record in File
-        writeRecord(bamFileOut,bamAlignmentRecord);
+        writeRecord(bamFileOut, bamAlignmentRecord);
 
 
 
@@ -392,6 +397,8 @@ int main() {
 
 
     bamFile.close();
-    std::cout << " Finished";
+    std::cout << "Finished!" << std::endl;
+    tend = time(0);
+    std::cout << "Operation took "<< difftime(tend, tstart) <<" second(s)."<< std::endl;
     return 1;
 }
