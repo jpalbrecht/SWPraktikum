@@ -11,8 +11,30 @@
 
 using namespace seqan;
 
-// Function to read a FastaFile in & building/saving Index-Structure of content of file.
-// Returns true if file could be read and index could be built and could be wrote to disk, otherwise false
+/* Function to read a FastaFile in & building/saving Index-Structure of content in file.
+ * Returns true if file could be read and index could be built/wrote to disk, otherwise false
+ * Syntax:
+ *   int erg = buildIndex(CharString fileIn, CharString fileOut);
+  *
+ * Inputs:
+ *   CharString fileIn      - complete Path to fastA file
+ *   CharString fileOut     - complete Path to output index file
+ *
+ * Outputs:
+ *  int     - true if outputfile written, false otherwise
+ *
+ * Example:
+ *   erg = buildIndex(fileIn, fileOut);
+ *
+ * Other header files required: <seqan/index.h>, <seqan/basic.h>
+ * Subfunctions: none
+ *
+ * See also:
+ * Author: Jan Philipp Albrecht
+ * Work address:
+ * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
+ * Website: https://github.com/jpalbrecht/SWPraktikum
+ */
 static int buildIndex(CharString fileIn, CharString fileOut) {
     //------------ Read in FastaReferenceFile & print Info
     SeqFileIn sFileIn;
@@ -52,9 +74,109 @@ static int buildIndex(CharString fileIn, CharString fileOut) {
     return 1;
 };
 
+/* Function to get the CIGAR-Format out of an ALignment-Object.
+ *  First Gaps and Last Gaps will be ignored. The Function takes
+ *  only one Input arguments, the Alignment Object over two DNA-Strings.
+ *  Output will be  String< CigarElement<> > with the CIGAR-Format.
+ * Syntax:
+ *   String< CigarElement<> > cig = getCigar(Align<Dna5String, ArrayGaps> align);
+ *
+ * Inputs:
+ *   Align<Dna5String, ArrayGaps> align  - Alignment object of seqan-Library with 2 Sequences of Dna5String-Type
+ *
+ * Outputs:
+ *  String< CigarElement<> >    - String of CigarElement-objects representing CIGAR-format of Alignment
+ *
+ * Example:
+ *   String< CigarElement<> > cig = getCigar(align)
+ *
+ * Other header files required: <seqan/seq_io.h>, <seqan/basic.h>
+ * Subfunctions: none
+ *
+ * See also:
+ * Author: Jan Philipp Albrecht
+ * Work address:
+ * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
+ * Website: https://github.com/jpalbrecht/SWPraktikum
+ */
+static String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> align){
+    typedef Align<Dna5String, ArrayGaps> TAlign;
+    String<CigarElement<> > cigar;
+    // Use references to the rows of align.
+    typedef Row<TAlign>::Type TRow;
+    TRow & row1 = row(align, 0);
+    TRow & row2 = row(align, 1);
+    // Initialize the row iterators.
+    typedef Iterator<TRow>::Type TRowIterator;
+    TRowIterator itRow1 = begin(row1);
+    TRowIterator itEndRow1 = end(row1);
+    TRowIterator itRow2 = begin(row2);
+    TRowIterator itEndRow2 = end(row2);
+    unsigned int numChar = 0;
+    unsigned long numGaps;
+    // don't count beginning Gaps!
+    if (isGap(itRow1)||isGap(itRow2)){
+        numGaps = countGaps(itRow1);
+        numGaps += countGaps(itRow2);
+        itRow1 += numGaps;
+        itRow2 += numGaps;
+    }
+    // don't count ending Gaps!
+    itEndRow1--;
+    itEndRow2--;
+    while(isGap(itEndRow1)|| isGap(itEndRow2)) {
+        itEndRow1 --;
+        itEndRow2 --;
+    }
+    // get CIGAR String
+    while ( itRow1 != itEndRow1) {
+        // Count insertions.
+        if (isGap(itRow1)) {
+            numGaps = countGaps(itRow1);
+            CigarElement<> c('I', (unsigned int)numGaps);
+            cigar += c;
+            itRow1 += numGaps;
+            itRow2 += numGaps;
+            continue;
+        }
+        // Count deletions.
+        if (isGap(itRow2)) {
+            numGaps = countGaps(itRow2);
+            CigarElement<> c('D', (unsigned int)numGaps);
+            cigar += c;
+            itRow1 += numGaps;
+            itRow2 += numGaps;
+            continue;
+        }
+        // Count matches.
+        while (*itRow1 == *itRow2 && itRow1 != itEndRow1) {
+            ++numChar;
+            ++itRow1;
+            ++itRow2;
+        }
+        if (numChar != 0) {
+            CigarElement<> c('M', numChar);
+            cigar += c;
+            numChar = 0;
+            continue;
+        }
+        // Count mismatches.
+        while (*itRow1 != *itRow2 && itRow1 != itEndRow1) {
+            ++numChar;
+            ++itRow1;
+            ++itRow2;
+        }
+        if (numChar != 0) {
+            CigarElement<> c('S', numChar);
+            cigar += c;
+            numChar = 0;
+        }
+    }
+    return cigar;
+}
 
 int main() {
-    //------------ Read Index & Reads read Genome & build/save Index
+//------------ Read Index & Reads read Genome & build/save Index
 //    if (!buildIndex("/home/phil/Dokumente/ALBIPraktikum/random10M.fasta",
 //    "/home/phil/Dokumente/ALBIPraktikum/random10M.inx")){
 //        std::cerr << "ERROR: Error due to Message above. Exiting.." << std::endl;
@@ -105,9 +227,9 @@ int main() {
         unsigned pos = 0;
         typedef Iterator<Dna5String>::Type TIterator;
         // building best seed Vector & counting-Variables
-        std::vector<int> bestSeed(3,0);
-        int beginRefGen;
-        int endRefGen;
+        std::vector<unsigned long> bestSeed(3,0);
+        unsigned long beginRefGen;
+        unsigned long endRefGen;
         // Loop through seeds
         for (TIterator readIt = begin(*readsIt); readIt != end(*readsIt);) {
             // if rest of read is bigger than 10 letters
@@ -132,8 +254,8 @@ int main() {
             // reset finder
             clear(finder);
             // initialize Vector to store seedPosition in
-            std::vector<int> begPos;
-            std::vector<int> begEnd;
+            std::vector<unsigned long> begPos;
+            std::vector<unsigned long> begEnd;
             while (find(finder, pat)) {
                 begPos.push_back(beginPosition(finder));
                 begEnd.push_back(endPosition(finder));
@@ -150,7 +272,7 @@ int main() {
 
             // ------------ extend seed(s)
             Dna5String refGen;
-            std::vector<int> matched;
+            std::vector<unsigned long> matched;
             for (unsigned ind = 0; ind < begPos.size(); ind++) {
                 // define seed
                 Seed<Simple> seed1(10, pos - 10, 20, pos);
@@ -168,8 +290,8 @@ int main() {
 
 
             // ------------ save best seed
-            std::vector<int>::iterator bestMatch = std::max_element(matched.begin(), matched.end());
-            int posBestMatch = std::distance(matched.begin(), bestMatch);
+            std::vector<unsigned long>::iterator bestMatch = std::max_element(matched.begin(), matched.end());
+            unsigned long posBestMatch = (unsigned long)std::distance(matched.begin(), bestMatch);
             std::cout << "best match with " << *bestMatch << " Bases!" << std::endl;
             // save best seed if better than these before
             if (*bestMatch > bestSeed.back()) {
@@ -197,86 +319,37 @@ int main() {
 
 
         // ------------ determine CIGAR Format
-                // Use references to the rows of align.
-        typedef Row<TAlign>::Type TRow;
-        TRow & row1 = row(align, 0);
-        TRow & row2 = row(align, 1);
-        // Initialize the row iterators.
-        typedef Iterator<TRow>::Type TRowIterator;
-        TRowIterator itRow1 = begin(row1);
-        TRowIterator itEndRow1 = end(row1);
-        TRowIterator itRow2 = begin(row2);
-        TRowIterator itEndRow2 = end(row2);
-        std::stringstream cigar;
-        int numChar = 0;
-        int gapCount = 0;
-        // don't count beginning Gaps!
-        if (isGap(itRow1)||isGap(itRow2)){
-            int numGaps = countGaps(itRow1);
-            numGaps += countGaps(itRow2);
-            itRow1 += numGaps;
-            itRow2 += numGaps;
-        }
-        // don't count ending Gaps!
-        int endGaps = 0;
-        while(isGap(--itEndRow1)|| isGap(--itEndRow2)) {
-            endGaps ++;
-        }
-        // count up last letter
-        itEndRow1++;
-        // get CIGAR String
-        while ( itRow1 != itEndRow1){
-            // Count insertions.
-            if (isGap(itRow1)) {
-                int numGaps = countGaps(itRow1);
-                cigar << numGaps << "I";
-                itRow1 += numGaps;
-                itRow2 += numGaps;
-                continue;
-            }
-            // Count deletions.
-            if (isGap(itRow2)){
-                int numGaps = countGaps(itRow2);
-                cigar << numGaps << "D";
-                itRow1 += numGaps;
-                itRow2 += numGaps;
-                continue;
-            }
-            // Count matches.
-            while (*itRow1 == *itRow2 && itRow1 != itEndRow1)
-            {
-                ++numChar;
-                ++itRow1;
-                ++itRow2;
-            }
-            if (numChar != 0){
-                cigar << numChar << "M";
-                numChar = 0;
-                continue;
-            }
-            // Count mismatches.
-            while (*itRow1 != *itRow2 && itRow1 != itEndRow1)
-            {
-                ++numChar;
-                ++itRow1;
-                ++itRow2;
-            }
-            if (numChar != 0)
-                cigar << numChar << "S";
-            numChar = 0;
-        }
-        std::cout << "CIGAR Format: " << cigar.str() << std::endl;
+        String< CigarElement<> > cig = getCigar(align);
 
 
 
         // ------------ write in SAM
-        CharString bamFileName = "/home/phil/Dokumente/ALBIPraktikum/testBAM";
-        //BamAlignmentRecord record;
-        //BamFileOut bamFileOut();
+        //CharString bamFileName = "/home/phil/Dokumente/ALBIPraktikum/testBAM";
+        // Create BamHeader for Read
+        BamHeader bamHeader;
+        BamHeaderRecord bamHeaderRecord;
+        setTagValue("VN","1.3",bamHeaderRecord);
+        setTagValue("SO","coordinate",bamHeaderRecord);
+        setTagValue("SN","ref", bamHeaderRecord);
+        setTagValue("LN","130", bamHeaderRecord);
+        assign(bamHeader,bamHeaderRecord);
 
+        // create Alignment Record for Read
+        BamAlignmentRecord bamAlignmentRecord;
+        // set recordFlags for read
+        char name[10];
+        sprintf(name,"%s%ld","Read_" ,position(readsIt, reads));
+        bamAlignmentRecord.qName = name;                                // Record Name
+        bamAlignmentRecord.flag = position(readsIt, reads);             // Record Number
+        bamAlignmentRecord.beginPos = bestSeed.at(0);                   // Position in RefGen
+        bamAlignmentRecord.cigar = cig;                                 // Alignment CIGAR
+        bamAlignmentRecord.seq =  *readsIt;                             // Read sequence
 
-
-
+        // create Files and write Header and Alignment
+        BamFileIn bamFileIn;
+        BamFileOut bamFileOut(context(bamFileIn), std::cout, Sam());
+        writeHeader(bamFileOut,bamHeader);
+        writeRecord(bamFileOut,bamAlignmentRecord);
     }// next read
 
     std::cout << " Finished";
