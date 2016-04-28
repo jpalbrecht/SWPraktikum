@@ -22,6 +22,11 @@ using namespace seqan;
  *   std::string inReads    - Path to ReadsFile.
  *   std::string outSam     - Path to Output File
  *   bool loadIndex         - Boolean indicating if inRef is Fasta or Index File
+ *   int seedLen            - declare seed Length to split Reads
+ *   int indexMode          - IndexMode. If 0 program will use SuffixArray, if set to 1 program will use FM-Index
+ *   bool levenshtein       - Boolean indicating Distance to calculate seedExtension with. True will result in the use
+ *                                  of Levenshtein Distance. False to Edit-Distance
+ *   Score<int, Simple> alignScheme  - AlignScheme for Alignment between Read and ReferenceGenome
  *
  * Functions:
  *   ReadMapperOptions  -  Constructor of Struct
@@ -40,9 +45,14 @@ struct ReadMapperOptions {
     std::string inReads;
     std::string outSam;
     bool loadIndex;
+    int seedLen;
+    int indexMode;
+    bool levenshtein;
+    Score<int, Simple> alignScheme;
 
     ReadMapperOptions() :
-            inRef(""), inReads(""), outSam(""), loadIndex(false) { }
+            inRef(""), inReads(""), outSam(""), loadIndex(false),seedLen(10),indexMode(0),
+            levenshtein(false), alignScheme(1, -1, 0, -1)  { }
 
 };
 
@@ -74,6 +84,7 @@ struct ReadMapperOptions {
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
 inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions, int argc, char const **argv) {
+    //------------ Set Up Parser and Arguments
     ArgumentParser parser("readMapper");
     // Set short description, version, and date.
     setShortDescription(parser, "Read Mapper");
@@ -88,20 +99,58 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
     addArgument(parser, ArgParseArgument(ArgParseArgument::STRING, "InPathReads"));
     addArgument(parser, ArgParseArgument(ArgParseArgument::STRING, "OutPathSam"));
 
-    // Define Options -- Section Modification Options
+
+    //------------ Define Options -- Section Modification Options
     addSection(parser, "Modification Options");
     addOption(parser, ArgParseOption("i", "index", "Option to load ReferenceGenome out of IndexFile."));
+    addOption(parser, ArgParseOption("s", "seedLength", "Number of Characters of seed",
+                                     ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("m", "indexMode", "Indicating the Index Modus to use. 0:SuffixArray 1:FM-Index",
+                                     ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("l", "levenshtein", "setting the extension Distance to Levenshtein-Distance"));
+    addOption(parser, ArgParseOption("e", "edit", "setting the extension Distance to Edit-Distance"));
+    addOption(parser, ArgParseOption("ma", "match", "MatchCost",
+                                     ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("mm", "missmatch", "MissMatchCost",
+                                     ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("go", "gapOpen", "GapOpenCost",
+                                     ArgParseArgument::INTEGER, "INT"));
+    addOption(parser, ArgParseOption("ge", "gapExtend", "GapExtendCost",
+                                     ArgParseArgument::INTEGER, "INT"));
 
 
-    // Add Examples Section.
+    //------------ Add Examples Section.
     addTextSection(parser, "Examples");
     addListItem(parser,
                 "\\fBreadMapper\\fP \\fB-i\\fP ",
                 "Load ReferenceGenome out of IndexFile");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-obouttocomesoon\\fP \\fB-o\\fP \\fIwhatever\\fP ",
-                "aboutToComeSoon");
-    // Parse command line.
+                "\\fBreadMapper\\fP \\fB-s\\fP \\fI10\\fP ",
+                "Set seedLength to 10(default)");
+    addListItem(parser,
+                "\\fBreadMapper\\fP \\fB-m\\fP \\fI0\\fP ",
+                "Set Index Modus to SuffixArray");
+    addListItem(parser,
+                "\\fBreadMapper\\fP \\fB-l\\fP",
+                "Set the extendSeed Mode to Levenshtein-Distance");
+    addListItem(parser,
+                "\\fBreadMapper\\fP \\fB-e\\fP",
+                "Set the extendSeed Mode to Edit-Distance");
+    addListItem(parser,
+                "\\fBreadMapper\\fP \\fB-ma\\fP \\fI2\\fP ",
+                "Set MatchCost to 2");
+    addListItem(parser,
+                "\\fBreadMapper\\fP \\fB-mm\\fP \\fI-1\\fP ",
+                "Set MissMatchCost to -1");
+    addListItem(parser,
+                "\\fBreadMapper\\fP \\fB-go\\fP \\fI-2\\fP ",
+                "Set GapOpenCost to -2");
+    addListItem(parser,
+                "\\fBreadMapper\\fP \\fB-ge\\fP \\fI-1\\fP ",
+                "Set GapExtendCost to -1");
+
+
+    //------------ Parse command line & read necessary Arguments and optional Values
     ArgumentParser::ParseResult res = parse(parser, argc, argv);
     // Only extract  options if the program will continue after parseCommandLine()
     if (res != ArgumentParser::PARSE_OK)
@@ -111,6 +160,37 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
     getArgumentValue(rmOptions.inReads, parser, 1);
     getArgumentValue(rmOptions.outSam, parser, 2);
     rmOptions.loadIndex = isSet(parser, "index");
+    getOptionValue(rmOptions.seedLen, parser, "seedLength");
+    getOptionValue(rmOptions.indexMode, parser, "indexMode");
+    rmOptions.levenshtein = isSet(parser, "levenshtein");
+
+
+    //------------ read ScoringScheme if set
+    int ma, mm, go, ge;
+    getOptionValue(ma, parser, "match");
+    getOptionValue(mm, parser, "missmatch");
+    getOptionValue(go, parser, "gapOpen");
+    getOptionValue(ge, parser, "gapExtend");
+    if (isSet(parser, "match")){
+        setScoreMatch(rmOptions.alignScheme, ma);
+    }
+    if (isSet(parser, "missmatch")){
+        setScoreMismatch(rmOptions.alignScheme, mm);
+    }
+    if (isSet(parser, "gapOpen")){
+        setScoreGapOpen(rmOptions.alignScheme, go);
+    }
+    if (isSet(parser, "gapExtend")){
+        setScoreGapExtend(rmOptions.alignScheme, ge);
+    }
+
+
+    //------------ check dissent options & return
+    if (isSet(parser, "levenshtein") && isSet(parser, "edit"))
+    {
+        std::cerr << "ERROR: You cannot specify both levenshtein- and edit-Distance!\n";
+        return seqan::ArgumentParser::PARSE_ERROR;
+    }
     return ArgumentParser::PARSE_OK;
 };
 
@@ -140,10 +220,10 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
  * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
-static inline int buildIndex(std::string &fileIn, std::string &fileOut) {
+static inline int buildIndex(std::string &fileIn, std::string &fileOut,ReadMapperOptions &rmOptions) {
     //------------ Read in FastaReferenceFile & print Info
     SeqFileIn sFileIn;
-    std::cout << "Reading File.." << std::endl;
+    std::cout << "Reading Reference-File.." << std::endl;
     if (!open(sFileIn, toCString(fileIn))) {
         std::cerr << "Could not read Reference-File!" << std::endl;
         return 0;
@@ -163,19 +243,34 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut) {
 
     //------------ build Index & save to disk & print info
     std::cout << "Building Index.." << std::endl;
-    Index<Dna5String, IndexSa<> > saIndex(genome);
-    // require Index for being able to save to disk
-    indexRequire(saIndex, FibreSA());
-    std::cout << "Index built!" << std::endl;
-    // save Index to File!
-    std::cout << "Saving Index to disk.." << std::endl;
-    if (!save(saIndex, toCString(fileOut))) {
-        std::cerr << "ERROR: not able to write Index-File to disk. Check for available space & authorization" <<
-        std::endl;
-        return 0;
+    // build Index
+    if (rmOptions.indexMode){
+        Index<Dna5String, IndexSa<> > index(genome);
+        // require Index for being able to save to disk
+        indexRequire(index, FibreSA());
+        std::cout << "Index built!" << std::endl;
+        // save Index to File!
+        std::cout << "Saving Index to disk.." << std::endl;
+        if (!save(index, toCString(fileOut))) {
+            std::cerr << "ERROR: not able to write Index-File to disk. Check for available space & authorization" <<
+            std::endl;
+            return 0;
+        }
+        std::cout << "Index saved!" << std::endl;
+    } else {
+        Index<Dna5String, FMIndex<> > index(genome);
+        // require Index for being able to save to disk
+        indexRequire(index, FibreSALF());
+        std::cout << "Index built!" << std::endl;
+        // save Index to File!
+        std::cout << "Saving Index to disk.." << std::endl;
+        if (!save(index, toCString(fileOut))) {
+            std::cerr << "ERROR: not able to write Index-File to disk. Check for available space & authorization" <<
+            std::endl;
+            return 0;
+        }
+        std::cout << "Index saved!" << std::endl;
     }
-    std::cout << "Index saved!" << std::endl;
-
     return 1;
 };
 
@@ -233,6 +328,9 @@ static inline String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> &ali
         --itEndRow1;
         --itEndRow2;
     } while (isGap(itEndRow1) || isGap(itEndRow2));
+    // count up last Character from while above which was not a gap
+    ++itEndRow1;
+    ++itEndRow2;
     // get CIGAR String
     while (itRow1 != itEndRow1) {
         // Count insertions.
@@ -377,9 +475,11 @@ static inline std::vector<std::vector<unsigned long> > findSeed(Dna5String &seed
  * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
-inline static std::vector<unsigned long> extendSeed(Dna5String &seed, Index<Dna5String, IndexSa<> > &index, Dna5String &read,
+template <typename TText, typename TIndex>
+inline static std::vector<unsigned long> extendSeed(TText &seed, Index<TText, TIndex > &index, TText &read,
                                              unsigned int &endPos,
-                                             std::vector<std::vector<unsigned long> > &positions) {
+                                             std::vector<std::vector<unsigned long> > &positions,
+                                                    ReadMapperOptions &rmOptions) {
     // necessary counters and numbers
     Dna5String refGen;
     unsigned long beginRefGen;
@@ -397,8 +497,14 @@ inline static std::vector<unsigned long> extendSeed(Dna5String &seed, Index<Dna5
                                                                            : length(index);
         // get underlying Text of Index at position specified above
         refGen = infix(indexText(index), beginRefGen, endRefGen);
-        // match extension
-        extendSeed(seed1, refGen, read, EXTEND_BOTH, MatchExtend());
+        if (rmOptions.levenshtein) {
+            // match extension LEVENSHTEIN!
+            Score<int, Simple> scoringScheme(2, -1, -1, -2);
+            extendSeed(seed1, refGen, read, EXTEND_BOTH, scoringScheme, 3, GappedXDrop());
+        } else {
+            // match extension EDIT-Distance!
+            extendSeed(seed1, refGen, read, EXTEND_BOTH, MatchExtend());
+        }
         matched.push_back(endPositionH(seed1) - beginPositionH(seed1));
 //                std::cout << "matched: " << matched.back() << std::endl;
     }// next seed to extend
@@ -426,6 +532,7 @@ inline static std::vector<unsigned long> extendSeed(Dna5String &seed, Index<Dna5
  */
 int main(int argc, char const **argv) {
     // "/home/phil/Dokumente/ALBIPraktikum/random10M.inx" "/home/phil/Dokumente/ALBIPraktikum/random10M_reads100_10k.fasta" "/home/phil/Dokumente/ALBIPraktikum/testBAM" -i
+    // mehr Index direkt in cache wenn ich größe verkleinere
     //------------ time for statistics
     std::clock_t start;
     double duration;
@@ -441,18 +548,14 @@ int main(int argc, char const **argv) {
     }
 
 
-    // Index-Nutzung angeben --> suffixArray zu FM-Index
-    // FASTQ statt fasta einlesen
-
-
 
     //------------ Read Genome & build/save Index
     if (!rmOptions.loadIndex){
         // read Fasta ReferenceGenome & build Index
-        size_t find = rmOptions.inRef.find_last_of("/\\");
-        std::string outRef = rmOptions.inRef.substr(0,find) ;
-        outRef += "random10M.inx";
-        if (!buildIndex(rmOptions.inRef,outRef )) {
+        std::string outRef = rmOptions.inRef;
+        std::string filename = ".inx";
+        outRef.append(filename);
+        if (!buildIndex(rmOptions.inRef,outRef, rmOptions )) {
             std::cerr << "ERROR: Error due to Message above. Exiting.." << std::endl;
             return 0;
         }
@@ -529,10 +632,10 @@ int main(int argc, char const **argv) {
         typedef Iterator<Dna5String>::Type TIterator;
         for (TIterator seedIt = begin(*readsIt); seedIt != end(*readsIt);) {
             // if rest of read is bigger than 10 letters
-            if ((seedIt + 10) <= end(*readsIt)) {
-                seed = infix(*seedIt, seedIt, seedIt + 10);
-                seedIt += 10;
-                pos += 10;
+            if ((seedIt + rmOptions.seedLen) <= end(*readsIt)) {
+                seed = infix(*seedIt, seedIt, seedIt + rmOptions.seedLen);
+                seedIt += rmOptions.seedLen;
+                pos += rmOptions.seedLen;
 //                std::cout << "Searching for Seed: " << seed << std::endl;
                 // Discard this part ?... could just be one letter... not good to search in Genome!
             } else { // if rest is not bigger than 10 letters
@@ -556,7 +659,7 @@ int main(int argc, char const **argv) {
 
 
             // ------------ extend seed(s)
-            std::vector<unsigned long> matched = extendSeed(seed, saIndex, *readsIt, pos, positions);
+            std::vector<unsigned long> matched = extendSeed(seed, saIndex, *readsIt, pos, positions, rmOptions);
 
 
 
@@ -573,8 +676,10 @@ int main(int argc, char const **argv) {
 
         } // next seed of read
 
+
+
         // ------------ perform semi-global Alignment for each Read at position of best seed
-        unsigned long lengthRead = length(*readsIt); // VERY HIGH RUNTIME!!!
+        unsigned long lengthRead = length(*readsIt);
         // referenceGenome in Match Region
         beginRefGen = (bestSeed.at(0) >= lengthRead) ? bestSeed.at(0) - lengthRead : 0;
         endRefGen = (bestSeed.at(1) + lengthRead < length(saIndex)) ? bestSeed.at(1) + lengthRead : length(saIndex);
@@ -584,7 +689,7 @@ int main(int argc, char const **argv) {
         assignSource(row(align, 0), infix(indexText(saIndex), beginRefGen, endRefGen));
         assignSource(row(align, 1), *readsIt);
         // do alignment & get score
-        int score = globalAlignment(align, Score<int, Simple>(1, -1, 0, -1));
+        int score = globalAlignment(align, rmOptions.alignScheme);
 //        std::cout << align << std::endl;
 //        std::cout << "Score: " << score << std::endl;
 //        std::cout << "" << std::endl;
