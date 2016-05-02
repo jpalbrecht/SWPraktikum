@@ -55,26 +55,24 @@ struct ReadMapperOptions {
 
 
     ReadMapperOptions() :
-            inRef(""), inReads(""), outSam(""), loadIndex(false),fmInd(false) ,seedLen(10),indexMode(0),
-            levenshtein(false), alignScheme(1, -1, 0, -1), dropout(3), extendScheme(2, -1, -1, -2)  { }
+            inRef(""), inReads(""), outSam(""), loadIndex(false), fmInd(false), seedLen(10), indexMode(0),
+            levenshtein(false), alignScheme(1, -1, 0, -1), dropout(3), extendScheme(2, -1, -1, -2) { }
 
 };
 
 
-struct Distanz {
-    Distanz() {}
-};
 
 /* Struct to set Distance Object in runtime */
-struct Levenshtein:Distanz{
-    Levenshtein() {}
+struct Levenshtein {
+    Levenshtein() { }
 };
 
 
 /* Struct to set Distance Object in runtime */
-struct Hamming:Distanz{
-    Hamming() {}
+struct Hamming {
+    Hamming() { }
 };
+
 
 
 /* Function to call the extendSeed-Function with to runtime specialized options
@@ -104,11 +102,12 @@ struct Hamming:Distanz{
  * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
-template <typename TText>
-inline static void extendWrapper(Seed<Simple> & seed1 , Dna5String &refGen,TText &read,
-                                 ReadMapperOptions &rmOptions, Levenshtein ){
-    extendSeed(seed1, refGen, read, EXTEND_BOTH, rmOptions.extendScheme, 3,GappedXDrop());
+template<typename TText>
+inline static void extendWrapper(Seed<Simple> &seed1, Dna5String &refGen, TText &read,
+                                 ReadMapperOptions &rmOptions, Levenshtein) {
+    extendSeed(seed1, refGen, read, EXTEND_BOTH, rmOptions.extendScheme, 3, GappedXDrop());
 }
+
 
 
 /* Function to call the extendSeed-Function with to runtime specialized options
@@ -122,7 +121,7 @@ inline static void extendWrapper(Seed<Simple> & seed1 , Dna5String &refGen,TText
  *   Dna5String &refGen             - reference Gen to extend seed over
  *   TText &read                    - read to extend Seed over
  *   ReadMapperOptions &rmOptions   - Options containing AlignmentScheme and dropOut-threshold
- *   Hamming                        - object telling the compiler wich version of extendSeed to call
+ *   Hamming                        - object telling the compiler which version of extendSeed to call
  *
  * Outputs:
  *
@@ -138,11 +137,12 @@ inline static void extendWrapper(Seed<Simple> & seed1 , Dna5String &refGen,TText
  * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
-template <typename TText>
-inline static void extendWrapper(Seed<Simple> & seed1 , Dna5String &refGen,TText &read,
-                                 ReadMapperOptions &rmOptions, Hamming ) {
+template<typename TText>
+inline static void extendWrapper(Seed<Simple> &seed1, Dna5String &refGen, TText &read,
+                                 ReadMapperOptions &rmOptions, Hamming) {
     extendSeed(seed1, refGen, read, EXTEND_BOTH, MatchExtend());
 }
+
 
 
 /* Function to parse Arguments from Command Line
@@ -268,38 +268,40 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
     getOptionValue(mm, parser, "mismatch");
     getOptionValue(go, parser, "gapOpen");
     getOptionValue(ge, parser, "gapExtend");
-    if (isSet(parser, "match")){
+    if (isSet(parser, "match")) {
         setScoreMatch(rmOptions.alignScheme, ma);
     }
-    if (isSet(parser, "mismatch")){
+    if (isSet(parser, "mismatch")) {
         setScoreMismatch(rmOptions.alignScheme, mm);
     }
-    if (isSet(parser, "gapOpen")){
+    if (isSet(parser, "gapOpen")) {
         setScoreGapOpen(rmOptions.alignScheme, go);
     }
-    if (isSet(parser, "gapExtend")){
+    if (isSet(parser, "gapExtend")) {
         setScoreGapExtend(rmOptions.alignScheme, ge);
     }
 
 
     //------------ check dissent options & return
-    if (isSet(parser, "suffixArray") && isSet(parser, "fmIndex"))
-    {
+    if (isSet(parser, "suffixArray") && isSet(parser, "fmIndex")) {
         std::cerr << "ERROR: You cannot specify both suffixArray- and fmIndex-Modus!\n";
         return seqan::ArgumentParser::PARSE_ERROR;
     }
-    if (isSet(parser, "levenshtein") && isSet(parser, "hamming"))
-    {
+    if (isSet(parser, "levenshtein") && isSet(parser, "hamming")) {
         std::cerr << "ERROR: You cannot specify both levenshtein- and hamming-Distance!\n";
         return seqan::ArgumentParser::PARSE_ERROR;
     }
-    if (isSet(parser, "dropout") && isSet(parser, "hamming"))
-    {
+    if (isSet(parser, "dropout") && isSet(parser, "hamming")) {
         std::cerr << "ERROR: You cannot specify a dropout with hamming-Distance!\n";
+        return seqan::ArgumentParser::PARSE_ERROR;
+    }
+    if (isSet(parser, "dropout") && !isSet(parser, "levenshtein")) {
+        std::cerr << "ERROR: You cannot specify a dropout without levenshtein-Distance!\n";
         return seqan::ArgumentParser::PARSE_ERROR;
     }
     return ArgumentParser::PARSE_OK;
 };
+
 
 
 /* Function to read a FastaFile in & building/saving Index-Structure of content in file.
@@ -307,10 +309,11 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
  *
  * Syntax:
  *   int erg = buildIndex(CharString fileIn, CharString fileOut);
-  *
+ *
  * Inputs:
- *   CharString fileIn      - complete Path to fastA file
- *   CharString fileOut     - complete Path to output index file
+ *   CharString fileIn              - complete Path to fastA file
+ *   CharString fileOut             - complete Path to output index file
+ *   ReadMapperOptions &rmOptions   - read mapper program option object
  *
  * Outputs:
  *  int     - true if Output-file written, false otherwise
@@ -327,7 +330,7 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
  * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
-static inline int buildIndex(std::string &fileIn, std::string &fileOut,ReadMapperOptions &rmOptions) {
+static inline int buildIndex(std::string &fileIn, std::string &fileOut, ReadMapperOptions &rmOptions) {
     //------------ Read in FastaReferenceFile & print Info
     SeqFileIn sFileIn;
     std::cout << "Reading Reference-File.." << std::endl;
@@ -351,8 +354,8 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut,ReadMappe
     //------------ build Index & save to disk & print info
     std::cout << "Building Index.." << std::endl;
     // build Index
-    if (!rmOptions.fmInd){
-        Index<Dna5String, IndexSa<> > index(genome);
+    if (!rmOptions.fmInd) {
+        Index < Dna5String, IndexSa<> > index(genome);
         // require Index for being able to save to disk
         indexRequire(index, FibreSA());
         std::cout << "Index built!" << std::endl;
@@ -365,7 +368,7 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut,ReadMappe
         }
         std::cout << "Index saved!" << std::endl;
     } else {
-        Index<Dna5String, FMIndex<> > index(genome);
+        Index < Dna5String, FMIndex<> > index(genome);
         // require Index for being able to save to disk
         indexRequire(index, FibreSALF());
         std::cout << "Index built!" << std::endl;
@@ -382,6 +385,7 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut,ReadMappe
 };
 
 
+
 /* Function to get the CIGAR-Format out of an Alignment-Object.
  *  First Gaps and Last Gaps will be ignored. The Function takes
  *  only one Input arguments, the Alignment Object over two DNA-Strings.
@@ -391,10 +395,10 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut,ReadMappe
  *   String< CigarElement<> > cig = getCigar(Align<Dna5String, ArrayGaps> align);
  *
  * Inputs:
- *   Align<Dna5String, ArrayGaps> align  - Alignment object of seqan-Library with 2 Sequences of Dna5String-Type
+ *   Align<Dna5String, ArrayGaps> align     - Alignment object of seqan-Library with 2 Sequences of Dna5String-Type
  *
  * Outputs:
- *  String< CigarElement<> >    - String of CigarElement-objects representing CIGAR-format of Alignment
+ *  String< CigarElement<> >                - String of CigarElement-objects representing CIGAR-format of Alignment
  *
  * Example:
  *   String< CigarElement<> > cig = getCigar(align)
@@ -410,7 +414,7 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut,ReadMappe
  */
 static inline String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> &align) {
     typedef Align<Dna5String, ArrayGaps> TAlign;
-    String<CigarElement<> > cigar;
+    String < CigarElement<> > cigar;
     // Use references to the rows of align.
     typedef Row<TAlign>::Type TRow;
     TRow &row1 = row(align, 0);
@@ -486,28 +490,39 @@ static inline String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> &ali
 };
 
 
+
 /* Function to find a seed-DNAString in a ReferenceDNAString over a Index-Structure given the seed and the index.
  * Function returns all matches in ReferenceString in a vector containing two subvectors. First is BeginPosition of seed.
  * Second is EndPosition of seed. If no match was found Output will be an empty vector.
  *
  * Syntax:
- *   std::vector<std::vector<unsigned long> > findSeed(Dna5String seed, Index < Dna5String, IndexSa<> > index );
+ *   std::vector<unsigned long> findAndExtendSeed(TText &seed, Index<TText, TIndex> &index,
+ *                                                         TText &read, unsigned int &endPos,
+ *                                                         ReadMapperOptions &rmOptions,
+ *                                                         std::vector<unsigned long> bestSeed, TDistance)
  *
  * Inputs:
- *   Dna5String seed  - Dna5String-Type of a seed, normally shorter than Reference
- *   Index < Dna5String, IndexSa<> > index  -  Index-object to search seed in
+ *   TText seed                     - TText Object of a seed, normally shorter than Reference, i.e. DNA5String
+ *   Index<TText, TIndex> &index    - Index-object with Template Parameters to search seed in
+ *   TText &read                    - Read over which seed is defined of same Type of seed
+ *   unsigned int &endPos           - Ending position of seed in read
+ *   ReadMapperOptions &rmOptions   - ReadMapperOptions object containing program parameters
+ *   std::vector<unsigned long> bestSeed    - Vector to store position in ReferenceGenome and best Score in
+ *   TDistance                      - Template object to set seedExtension Option to runtime
  *
  * Outputs:
- *  std::vector<std::vector<unsigned long> >  - Vector containing two other vectors.
- *                  First is/are beginning Position(s) of hits of seed in ReferenceDNAString(i.e. Index)
- *                  Second is/are ending Position(s) of hits of seed in ReferenceDNAString(i.e. Index)
+ *  vector<unsigned long>  - Vector containing:
+ *                  First is beginning Position of best hit of seed in ReferenceDNAString(i.e. Index)
+ *                  Second is ending Position of best hit of seed in ReferenceDNAString(i.e. Index)
+ *                  Third is score of best hit of seed
  *
  * Example:
- *   std::vector<std::vector<unsigned long> > matches = findSeed(seed, index);
+ *   std::vector<unsigned long> score = findAndExtendSeed(seed, index, read, 10, rmOptions, bestSeed, Hamming());
+ *   std::vector<unsigned long> score = findAndExtendSeed(seed, index, read, 10, rmOptions, bestSeed, Levenshtein());
  *
  * Other header files required: <seqan/index.h>, <seqan/seeds.h>, <seqan/find.h>
  *
- * Subfunctions: none
+ * Subfunctions: extSeed
  *
  * See also:
  * Author: Jan Philipp Albrecht
@@ -515,62 +530,64 @@ static inline String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> &ali
  * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
-static inline std::vector<std::vector<unsigned long> > findSeed(Dna5String &seed, Index<Dna5String, IndexSa<> > &index) {
-    // return object
-    std::vector<std::vector<unsigned long> > position;
-    // Pattern & Finder
-    Pattern<Dna5String> pat(seed);
-    Finder<Index<Dna5String, IndexSa<> > > finder(index);
-    // initialize Vector to store seedPosition in
-    std::vector<unsigned long> begPos;
-    std::vector<unsigned long> begEnd;
+template<typename TText, typename TIndex, typename TDistance>
+static inline std::vector<unsigned long> findAndExtendSeed(TText &seed, Index<TText, TIndex> &index,
+                                                           TText &read, unsigned int &endPos,
+                                                           ReadMapperOptions &rmOptions,
+                                                           std::vector<unsigned long> bestSeed, TDistance) {
+    // Pattern & Finder & score
+    Pattern<TText> pat(seed);
+    Finder<Index<TText, TIndex> > finder(index);
+    unsigned long score;
     while (find(finder, pat)) {
-        begPos.push_back(beginPosition(finder));
-        begEnd.push_back(endPosition(finder));
 //                std::cout << '[' << beginPosition(finder) << '.' << endPosition(finder) << ']' << std::endl;
+        // extend founded seed
+        score = extSeed(seed, index, read, endPos, beginPosition(finder), endPosition(finder), rmOptions,
+                            TDistance());
+        // safe best score & seed if better than seed before
+        if (score > bestSeed.back()) {
+            bestSeed.at(0) = beginPosition(finder);
+            bestSeed.at(1) = endPosition(finder);
+            bestSeed.at(2) = score;
+        }
     }
-    if (begPos.empty()) {
-//                std::cout << "nothing Found!.. next seed" << std::endl;
-        // retuning empty Vector
-        return position;
-    }
-//            std::cout << "Found Seed " << begPos.size() <<" times!" << std::endl;
-
-    position.push_back(begPos);
-    position.push_back(begEnd);
-    return position;
+    return bestSeed;
 };
+
 
 
 /* Function extend a given seed in both directions. Function returns a vector containing the number of extended matched
  * characters between seed (i.e. String where seed can be found in) and reference-Genome.
  *
  * Syntax:
- * static std::vector<unsigned long> extSeed(Dna5String &seed, Index<Dna5String, IndexSa<> > &index, Dna5String &read,
- *                                             unsigned int &endPos,
- *                                             std::vector<std::vector<unsigned long> > &positions)
+ * unsigned long extSeed(TText &seed, Index<TText, TIndex> &index, TText &read,
+ *                                                unsigned int &endPos,
+ *                                                unsigned long startPosition, unsigned long endPosition,
+ *                                                ReadMapperOptions &rmOptions, TDistance)
  *
  * Inputs:
- *   Dna5String seed  - Dna5String-Type of a seed which can be found in read and ReferenceGenome
- *   Index < Dna5String, IndexSa<> > index  -  Index-object as ReferenceGenome
- *   Dna5String read  -  Dna5String-Type of a read where the seed can be found in
- *   unsigned int endPos - Position in the Read where seed ends! CAUTION: ENDPOSITION!
- *   std::vector<std::vector<unsigned long> > vector containing two subvectors.
- *                  First is/are beginning Position(s) of hits of seed in ReferenceDNAString(i.e. Index)
- *                  Secound is/are ending Position(s) of hits of seed in ReferenceDNAString(i.e. Index)
+ *   TText seed                     - TText Object of a seed, normally shorter than Reference, i.e. DNA5String
+ *   Index<TText, TIndex> &index    - Index-object with Template Parameters to search seed in
+ *   TText &read                    - Read over which seed is defined of same Type of seed
+ *   unsigned int &endPos           - Ending position of seed in read
+ *   unsigned long startPosition    - Start Position of seed in ReferenceGenome
+ *   unsigned long endPosition      - End Position of seed in ReferenceGenome
+ *   ReadMapperOptions &rmOptions   - ReadMapperOptions object containing program parameters
+ *   TDistance                      - Template object to set seedExtension Option to runtime
  *
  * Outputs:
- *  std::vector<unsigned long> - Vector containing the total number of characters which can be aligned to
- *                  ReferenceGenome and Read by extending the Seed-Region.
+ *  unsigned long - Score of Extension
  *
  * Example:
  *   Dna5String seed = "ACGT";
- *   Dna5String index = "CCCCCCCAACGTTGGGGGGG" // normally this is a index-structure, but to show whats going on this is perfect
+ *   Dna5String index = "CCCCCCCAACGTTGGGGGGG"
+ *              // normally this is a index-structure, but to show whats going on this is perfect
  *   Dna5String read = "AAAAAAAAACGTTTTTTT";
- *   std::vector<unsigned long> begin; begin.push_back = 9;
- *   std::vector<unsigned long> end; end.push_back = 13;
- *   std::vector<std::vector<unsigned long> > positions; positions.push_back(begin); positions.push_back(end);
- *   std::vector<unsigned long> matches = extSeed(seed, index, read, 12, positions); // would contain number 6
+ *   unsigned int endPos = 12;
+ *   unsigned long startPosition = 9;
+ *   unsigned long endPosition = 13;
+ *   unsigned long score = extSeed(seed, index, read, endPos, startPosition, endPosition, rmOptions, Hamming());
+ *   // score would be 6
  *
  * Other header files required: <seqan/index.h>, <seqan/seeds.h>, <seqan/find.h>
  *
@@ -582,38 +599,31 @@ static inline std::vector<std::vector<unsigned long> > findSeed(Dna5String &seed
  * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
-template <typename TText, typename TIndex, typename TDistance>
-inline static std::vector<unsigned long> extSeed(TText &seed, Index<TText, TIndex > &index, TText &read,
-                                             unsigned int &endPos,
-                                             std::vector<std::vector<unsigned long> > &positions,
-                                                    ReadMapperOptions &rmOptions, TDistance) {
+template<typename TText, typename TIndex, typename TDistance>
+inline static unsigned long extSeed(TText &seed, Index<TText, TIndex> &index, TText &read,
+                                                 unsigned int &endPos,
+                                                 unsigned long startPosition, unsigned long endPosition,
+                                                 ReadMapperOptions &rmOptions, TDistance) {
     // necessary counters and numbers
     Dna5String refGen;
-    unsigned long beginRefGen;
-    unsigned long endRefGen;
     unsigned long seedLength = length(seed);
-    // vector to store extend-length in
-    std::vector<unsigned long> matched;
-    // loop throught all hits of a given seed at different positions in ReferenceGenome
-    for (unsigned ind = 0; ind < positions.at(0).size(); ind++) {
-        // define seed
-        Seed<Simple> seed1(seedLength, endPos - seedLength, 2 * seedLength, endPos);
-        // referenceGenome in Match Region with seedLength characters additional to each side if possible
-        beginRefGen = (positions.at(0).at(ind) >= seedLength) ? positions.at(0).at(ind) - seedLength : 0;
-        endRefGen = (positions.at(1).at(ind) + seedLength < length(index)) ? positions.at(1).at(ind) + seedLength
-                                                                           : length(index);
-        // get underlying Text of Index at position specified above
-        refGen = infix(indexText(index), beginRefGen, endRefGen);
-        extendWrapper(seed1,refGen,read,rmOptions,TDistance());
-        matched.push_back(endPositionH(seed1) - beginPositionH(seed1));
-//                std::cout << "matched: " << matched.back() << std::endl;
-    }// next seed to extend
-    return matched;
+    // define seed
+    Seed<Simple> seed1(seedLength, endPos - seedLength, 2 * seedLength, endPos);
+    // referenceGenome in Match Region with seedLength characters additional to each side if possible
+    unsigned long beginRefGen = (startPosition >= seedLength) ? startPosition - seedLength : 0;
+    unsigned long endRefGen = (endPosition + seedLength < length(index)) ? endPosition + seedLength : length(index);
+    // get underlying Text of Index at position specified above
+    refGen = infix(indexText(index), beginRefGen, endRefGen);
+    // call of wrapper Function
+    extendWrapper(seed1, refGen, read, rmOptions, TDistance());
+    // return score
+    return (endPositionH(seed1) - beginPositionH(seed1));
 };
 
 
+
 /* Function to process a set of given reads. This Function cuts each read in variable number of seeds (seed-length
- * specified in rmOptions) nad searches best position of each seed in reference genome. It returns a Vector containing
+ * specified in rmOptions) and searches best position of each seed in reference genome. It returns a Vector containing
  * the BamAligmentRecord of each Read with best hit to ReferenceGenome.
  *
  * Syntax:
@@ -624,7 +634,7 @@ inline static std::vector<unsigned long> extSeed(TText &seed, Index<TText, TInde
  *   Dna5String &reads              - Dna5String-Type of a seed which can be found in read and ReferenceGenome
  *   ReadMapperOptions &rmOptions   - Options for this Subroutine
  *   Index<TText, TIndex > &index   - Index-object as ReferenceGenome
- *   TDistance                      - Template to set Distance in runtime to
+ *   TDistance                      - Template object to set seedExtension Option to runtime
  *
  * Outputs:
  *   std::vector<BamAlignmentRecord> - Vector containing all BamAlignmentRecords of all Reads
@@ -644,23 +654,36 @@ inline static std::vector<unsigned long> extSeed(TText &seed, Index<TText, TInde
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
 
-template <typename TText, typename TIndex, typename TDistance>
+template<typename TText, typename TIndex, typename TDistance>
 inline static std::vector<BamAlignmentRecord> processReads(StringSet<Dna5String> &reads, ReadMapperOptions &rmOptions,
-                                                           Index<TText, TIndex > &index, TDistance){
+                                                           Index<TText, TIndex> &index, TDistance) {
+
+
+    // ------------ define objects, counters, etc.
+    Dna5String seed;
+    unsigned pos = 0;
+    unsigned long beginRefGen;
+    unsigned long endRefGen;
+    unsigned long lengthRead;
+    int score;
+    String < CigarElement<> > cig;
+    std::vector<std::vector<unsigned long> > positions;
+    std::vector<unsigned long> matched;
     std::vector<BamAlignmentRecord> bamRecords;
+
+
+
+    // ------------ loop over Reads
     typedef Iterator<StringSet<Dna5String> >::Type TIterator;
     for (TIterator readsIt = begin(reads); readsIt != end(reads); ++readsIt) {
 //        std::cout << "processing Element: " << position(readsIt, reads) << ".." << std::endl;
+        // defining bestSeed Vector for each read
+        std::vector<unsigned long> bestSeed(3, 0);
+        pos = 0;
 
 
 
         // ------------ cut in small seeds
-        Dna5String seed;
-        unsigned pos = 0;
-        // building best seed Vector & counting-Variables
-        std::vector<unsigned long> bestSeed(3, 0);
-        unsigned long beginRefGen;
-        unsigned long endRefGen;
         // Loop through seeds
         typedef Iterator<Dna5String>::Type TIterator;
         for (TIterator seedIt = begin(*readsIt); seedIt != end(*readsIt);) {
@@ -681,38 +704,14 @@ inline static std::vector<BamAlignmentRecord> processReads(StringSet<Dna5String>
 
 
 
-            // ------------ find seed
-            std::vector<std::vector<unsigned long> > positions = findSeed(seed, index);
-            // catch nothing found case
-            if (positions.empty()) {
-                // next seed
-                break;
-            }
-
-
-
-            // ------------ extend seed(s)
-            std::vector<unsigned long> matched = extSeed(seed, index, *readsIt, pos, positions, rmOptions, TDistance());
-
-
-
-            // ------------ save best seed
-            std::vector<unsigned long>::iterator bestMatch = std::max_element(matched.begin(), matched.end());
-            unsigned long posBestMatch = (unsigned long) std::distance(matched.begin(), bestMatch);
-//          std::cout << "best match with " << *bestMatch << " Bases!" << std::endl;
-            // save best seed if better than these before
-            if (*bestMatch > bestSeed.back()) {
-                bestSeed.at(0) = positions.at(0).at(posBestMatch);
-                bestSeed.at(1) = positions.at(1).at(posBestMatch);
-                bestSeed.at(2) = *bestMatch;
-            }
-
+            // ------------ find & extend & get best seed
+            bestSeed = findAndExtendSeed(seed, index, *readsIt, pos, rmOptions, bestSeed,TDistance());
         } // next seed of read
 
 
 
         // ------------ perform semi-global Alignment for each Read at position of best seed
-        unsigned long lengthRead = length(*readsIt);
+        lengthRead = length(*readsIt);
         // referenceGenome in Match Region
         beginRefGen = (bestSeed.at(0) >= lengthRead) ? bestSeed.at(0) - lengthRead : 0;
         endRefGen = (bestSeed.at(1) + lengthRead < length(index)) ? bestSeed.at(1) + lengthRead : length(index);
@@ -722,7 +721,7 @@ inline static std::vector<BamAlignmentRecord> processReads(StringSet<Dna5String>
         assignSource(row(align, 0), infix(indexText(index), beginRefGen, endRefGen));
         assignSource(row(align, 1), *readsIt);
         // do alignment & get score
-        int score = globalAlignment(align, rmOptions.alignScheme);
+        score = globalAlignment(align, rmOptions.alignScheme);
 //        std::cout << align << std::endl;
 //        std::cout << "Score: " << score << std::endl;
 //        std::cout << "" << std::endl;
@@ -730,7 +729,7 @@ inline static std::vector<BamAlignmentRecord> processReads(StringSet<Dna5String>
 
 
         // ------------ determine CIGAR Format
-        String<CigarElement<> > cig = getCigar(align);
+        cig = getCigar(align);
 
 
 
@@ -790,12 +789,12 @@ int main(int argc, char const **argv) {
 
 
     //------------ Read Genome & build/save Index
-    if (!rmOptions.loadIndex){
+    if (!rmOptions.loadIndex) {
         // read Fasta ReferenceGenome & build Index
         std::string outRef = rmOptions.inRef;
         std::string filename = ".inx";
         outRef.append(filename);
-        if (!buildIndex(rmOptions.inRef,outRef, rmOptions )) {
+        if (!buildIndex(rmOptions.inRef, outRef, rmOptions)) {
             std::cerr << "ERROR: Error due to Message above. Exiting.." << std::endl;
             return 0;
         }
@@ -807,7 +806,7 @@ int main(int argc, char const **argv) {
     //------------ Read Index & Reads
     std::cout << "Loading Index.." << std::endl;
     // load Index from disk
-    Index<Dna5String, IndexSa<> > saIndex;
+    Index < Dna5String, IndexSa<> > saIndex;
     open(saIndex, toCString(rmOptions.inRef));
     std::cout << "Index loaded!" << std::endl;
 
@@ -819,8 +818,8 @@ int main(int argc, char const **argv) {
     if (!open(rFileIn, toCString(rmOptions.inReads))) {
         std::cerr << "ERROR: Could not read Reads-File!" << std::endl;
     }
-    StringSet<Dna5String> reads;
-    StringSet<CharString> heads;
+    StringSet < Dna5String > reads;
+    StringSet < CharString > heads;
     try {
         // try to read all records
         readRecords(heads, reads, rFileIn);
@@ -833,17 +832,20 @@ int main(int argc, char const **argv) {
 
 
 
-    //------------ Loop through reads
+    //------------ Processing reads
     std::cout << "Processing.." << std::endl;
     std::vector<BamAlignmentRecord> bamRecords;
     if (!rmOptions.levenshtein) {
         bamRecords = processReads(reads, rmOptions, saIndex, Hamming());
-    }else {
+    } else {
         bamRecords = processReads(reads, rmOptions, saIndex, Levenshtein());
     }
+    std::cout << "Processed!" << std::endl;
+
 
 
     //------------  define files for writing out & write Header
+    std::cout << "Writing BAM.." << std::endl;
     BamFileIn bamFileIn;
     std::ofstream bamFile;
     bamFile.open(toCString(rmOptions.outSam));
@@ -864,11 +866,11 @@ int main(int argc, char const **argv) {
 
     // ------------ write alignment-records in File & close
     std::vector<BamAlignmentRecord>::iterator itBamRecords;
-    for (itBamRecords = bamRecords.begin();itBamRecords != bamRecords.end();++itBamRecords ) {
+    for (itBamRecords = bamRecords.begin(); itBamRecords != bamRecords.end(); ++itBamRecords) {
         writeRecord(bamFileOut, *itBamRecords);
     }
-
     bamFile.close();
+    std::cout << "BAM written!" << std::endl;
     std::cout << "Finished!" << std::endl;
     duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
     std::cout << "Runtime: " << duration << std::endl;
