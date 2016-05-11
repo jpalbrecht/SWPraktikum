@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <iostream>
 #include <vector>
 #include <ctime>
@@ -5,6 +6,7 @@
 #include <seqan/index.h>
 #include <seqan/seeds.h>
 #include <seqan/arg_parse.h>
+
 
 #include <seqan/bam_io.h>
 #include <seqan/find.h>
@@ -47,19 +49,20 @@ struct ReadMapperOptions {
     bool loadIndex;
     bool levenshtein;
     bool fmInd;
+    bool buildIndexOnly;
     int seedLen;
     int indexMode;
     int dropout;
+    int threads;
     Score<int, Simple> alignScheme;
     Score<int, Simple> extendScheme;
 
 
     ReadMapperOptions() :
             inRef(""), inReads(""), outSam(""), loadIndex(false), fmInd(false), seedLen(10), indexMode(0),
-            levenshtein(false), alignScheme(1, -1, 0, -1), dropout(3), extendScheme(2, -1, -1, -2) { }
+            levenshtein(false), alignScheme(1, -1, 0, -1), dropout(3), extendScheme(2, -1, -1, -2), threads(1) { }
 
 };
-
 
 
 /* Struct to set Distance Object in runtime */
@@ -72,7 +75,6 @@ struct Levenshtein {
 struct Hamming {
     Hamming() { }
 };
-
 
 
 /* Function to call the extendSeed-Function with to runtime specialized options
@@ -109,7 +111,6 @@ inline static void extendWrapper(Seed<Simple> &seed1, Dna5String &refGen, TText 
 }
 
 
-
 /* Function to call the extendSeed-Function with to runtime specialized options
  *
  * Syntax:
@@ -144,7 +145,6 @@ inline static void extendWrapper(Seed<Simple> &seed1, Dna5String &refGen, TText 
 }
 
 
-
 /* Function to parse Arguments from Command Line
  *
  * Syntax:
@@ -177,20 +177,26 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
     // Set short description, version, and date.
     setShortDescription(parser, "Read Mapper");
     setVersion(parser, "1.0");
-    setDate(parser, "April 2016");
+    setDate(parser, "Mai 2016");
     // Define usage line and long description.
     addUsageLine(parser,
-                 "[\\fIInputReference\\fP] \"\\fIInputReads\\fP\"  \"\\fIOutputSam\\fP\" \"\\fIOPTIONS\\fP\"  ]");
+                 "[\\fIInputReference\\fP] [ \"\\fIOPTIONS\\fP\"  ]");
     addDescription(parser, "This program allows to map Reads to a Reference Genome.");
-    // 3 arguments required
+    // 1 arguments required
     addArgument(parser, ArgParseArgument(ArgParseArgument::STRING, "InPathRef"));
-    addArgument(parser, ArgParseArgument(ArgParseArgument::STRING, "InPathReads"));
-    addArgument(parser, ArgParseArgument(ArgParseArgument::STRING, "OutPathSam"));
+
 
 
     //------------ Define Options -- Section Modification Options
     addSection(parser, "Modification Options");
     addOption(parser, ArgParseOption("i", "index", "Option to load ReferenceGenome out of IndexFile."));
+    addOption(parser, ArgParseOption("b", "buildIndex", "Option to just build the Index File"));
+    addOption(parser, ArgParseOption("r", "readFile", "set Path to File containing Reads. FASTA or FASTQ",
+                                     ArgParseArgument::STRING, "STRING"));
+    addOption(parser, ArgParseOption("o", "outSam", "set Path to output File",
+                                     ArgParseArgument::STRING, "STRING"));
+    addOption(parser, ArgParseOption("t", "threads", "set Number of threads to use",
+                                     ArgParseArgument::INTEGER, "INT"));
     addOption(parser, ArgParseOption("s", "seedLength", "Number of Characters of seed",
                                      ArgParseArgument::INTEGER, "INT"));
     addOption(parser, ArgParseOption("S", "suffixArray", "set the Index Modus to SuffixArray"));
@@ -212,37 +218,37 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
     //------------ Add Examples Section.
     addTextSection(parser, "Examples");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-i\\fP ",
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-i\\fP ",
                 "Load ReferenceGenome out of IndexFile");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-s\\fP \\fI10\\fP ",
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP  \\fB-s\\fP \\fI10\\fP ",
                 "Set seedLength to 10(default)");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-S\\fP ",
-                "Set Index Modus to SuffixArray");
+                "\\fBreadMapper\\fP \\fB-b\\fP \\fB-S\\fP ",
+                "Set Index Modus to SuffixArray. Build Suffix Array only-Modus");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-F\\fP ",
-                "Set Index Modus to FM-Index");
+                "\\fBreadMapper\\fP \\fB-b\\fP \\fB-F\\fP ",
+                "Set Index Modus to FM-Index. Build FM-Index only-Modus");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-l\\fP",
-                "Set the extendSeed Mode to Levenshtein-Distance");
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP \\fB-l\\fP \\fB-t\\fP \\fB4\\fP",
+                "Set the extendSeed Mode to Levenshtein-Distance. Use 4 threads for searching");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-d\\fP \\fI3\\fP",
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP \\fB-l\\fP \\fB-d\\fP \\fI3\\fP",
                 "Set the droput threshold to 3 (default value).");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-e\\fP ",
-                "Set the extendSeed Mode to Hamming-Distance");
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP \\fB-ha\\fP ",
+                "Set the extendSeed Mode to Hamming-Distance(default)");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-ma\\fP \\fI2\\fP ",
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP \\fB-l\\fP \\fB-ma\\fP \\fI2\\fP ",
                 "Set MatchCost to 2");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-mm\\fP \\fI-1\\fP ",
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP \\fB-l\\fP \\fB-mm\\fP \\fI-1\\fP ",
                 "Set MisMatchCost to -1");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-go\\fP \\fI-2\\fP ",
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP \\fB-l\\fP \\fB-go\\fP \\fI-2\\fP ",
                 "Set GapOpenCost to -2");
     addListItem(parser,
-                "\\fBreadMapper\\fP \\fB-ge\\fP \\fI-1\\fP ",
+                "\\fBreadMapper\\fP \\fB../pathToInPutFile\\fP \\fB-r\\fP \\fB../pathToReadsFile\\fP \\fB-l\\fP \\fB-ge\\fP \\fI-1\\fP ",
                 "Set GapExtendCost to -1");
 
 
@@ -253,14 +259,15 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
         return res;
     // read Values
     getArgumentValue(rmOptions.inRef, parser, 0);
-    getArgumentValue(rmOptions.inReads, parser, 1);
-    getArgumentValue(rmOptions.outSam, parser, 2);
+    getOptionValue(rmOptions.inReads, parser, "readFile");
+    getOptionValue(rmOptions.outSam, parser, "outSam");
     rmOptions.loadIndex = isSet(parser, "index");
     getOptionValue(rmOptions.seedLen, parser, "seedLength");
     rmOptions.fmInd = isSet(parser, "fmIndex");
     rmOptions.levenshtein = isSet(parser, "levenshtein");
     getOptionValue(rmOptions.dropout, parser, "dropout");
-
+    getOptionValue(rmOptions.threads, parser, "threads");
+    rmOptions.buildIndexOnly = isSet(parser, "buildIndex");
 
     //------------ read & set ScoringScheme if specified
     int ma, mm, go, ge;
@@ -283,6 +290,12 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
 
 
     //------------ check dissent options & return
+    if (!isSet(parser, "buildIndex")) {
+        if (!isSet(parser, "readFile")) {
+            std::cerr << "ERROR: Please specify Read-File with option r!\n";
+            return seqan::ArgumentParser::PARSE_ERROR;
+        }
+    }
     if (isSet(parser, "suffixArray") && isSet(parser, "fmIndex")) {
         std::cerr << "ERROR: You cannot specify both suffixArray- and fmIndex-Modus!\n";
         return seqan::ArgumentParser::PARSE_ERROR;
@@ -299,9 +312,24 @@ inline ArgumentParser::ParseResult parseCommandLine(ReadMapperOptions &rmOptions
         std::cerr << "ERROR: You cannot specify a dropout without levenshtein-Distance!\n";
         return seqan::ArgumentParser::PARSE_ERROR;
     }
+    if (isSet(parser, "buildIndex")) {
+        if (isSet(parser, "readFile") || isSet(parser, "levenshtein") || isSet(parser, "hamming")
+            || isSet(parser, "gapExtend") || isSet(parser, "gapOpen") || isSet(parser, "mismatch")
+            || isSet(parser, "match") || isSet(parser, "threads") || isSet(parser, "dropout")
+            || isSet(parser, "seedLength") || isSet(parser, "index") || isSet(parser, "outSam")) {
+            std::cout <<
+            "WARNING: Options specified although program just creates Index-File! Input will be ignored!\n";
+        }
+    }
+    if (!isSet(parser, "buildIndex")) {
+        if (!isSet(parser, "outSam")) {
+            std::cout << "WARNING: Out-File not specified! Sam-File will be written in same directory as Input-File!\n";
+            rmOptions.outSam = rmOptions.inReads;
+            rmOptions.outSam += ".out";
+        }
+    }
     return ArgumentParser::PARSE_OK;
 };
-
 
 
 /* Function to read a FastaFile in & building/saving Index-Structure of content in file.
@@ -355,7 +383,7 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut, ReadMapp
     std::cout << "Building Index.." << std::endl;
     // build Index
     if (!rmOptions.fmInd) {
-        Index < Dna5String, IndexSa<> > index(genome);
+        Index<Dna5String, IndexSa<> > index(genome);
         // require Index for being able to save to disk
         indexRequire(index, FibreSA());
         std::cout << "Index built!" << std::endl;
@@ -368,7 +396,7 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut, ReadMapp
         }
         std::cout << "Index saved!" << std::endl;
     } else {
-        Index < Dna5String, FMIndex<> > index(genome);
+        Index<Dna5String, FMIndex<> > index(genome);
         // require Index for being able to save to disk
         indexRequire(index, FibreSALF());
         std::cout << "Index built!" << std::endl;
@@ -383,7 +411,6 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut, ReadMapp
     }
     return 1;
 };
-
 
 
 /* Function to get the CIGAR-Format out of an Alignment-Object.
@@ -414,7 +441,7 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut, ReadMapp
  */
 static inline String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> &align) {
     typedef Align<Dna5String, ArrayGaps> TAlign;
-    String < CigarElement<> > cigar;
+    String<CigarElement<> > cigar;
     // Use references to the rows of align.
     typedef Row<TAlign>::Type TRow;
     TRow &row1 = row(align, 0);
@@ -490,13 +517,12 @@ static inline String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> &ali
 };
 
 
-
 /* Function to find a seed-DNAString in a ReferenceDNAString over a Index-Structure given the seed and the index.
  * Function returns all matches in ReferenceString in a vector containing two subvectors. First is BeginPosition of seed.
  * Second is EndPosition of seed. If no match was found Output will be an empty vector.
  *
  * Syntax:
- *   std::vector<unsigned long> findAndExtendSeed(TText &seed, Index<TText, TIndex> &index,
+ *   std::vector<long> findAndExtendSeed(TText &seed, Index<TText, TIndex> &index,
  *                                                         TText &read, unsigned int &endPos,
  *                                                         ReadMapperOptions &rmOptions,
  *                                                         std::vector<unsigned long> bestSeed, TDistance)
@@ -531,29 +557,28 @@ static inline String<CigarElement<> > getCigar(Align<Dna5String, ArrayGaps> &ali
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
 template<typename TText, typename TIndex, typename TDistance>
-static inline std::vector<unsigned long> findAndExtendSeed(TText &seed, Index<TText, TIndex> &index,
-                                                           TText &read, unsigned int &endPos,
-                                                           ReadMapperOptions &rmOptions,
-                                                           std::vector<unsigned long> bestSeed, TDistance) {
+static inline std::vector<long> findAndExtendSeed(TText &seed, Index<TText, TIndex> &index,
+                                                  TText &read, unsigned int &endPos,
+                                                  ReadMapperOptions &rmOptions,
+                                                  std::vector<long> &bestSeed, TDistance) {
     // Pattern & Finder & score
     Pattern<TText> pat(seed);
     Finder<Index<TText, TIndex> > finder(index);
-    unsigned long score;
+    long score;
     while (find(finder, pat)) {
 //                std::cout << '[' << beginPosition(finder) << '.' << endPosition(finder) << ']' << std::endl;
         // extend founded seed
         score = extSeed(seed, index, read, endPos, beginPosition(finder), endPosition(finder), rmOptions,
-                            TDistance());
+                        TDistance());
         // safe best score & seed if better than seed before
         if (score > bestSeed.back()) {
-            bestSeed.at(0) = beginPosition(finder);
-            bestSeed.at(1) = endPosition(finder);
+            bestSeed.at(0) = (long) beginPosition(finder);
+            bestSeed.at(1) = (long) endPosition(finder);
             bestSeed.at(2) = score;
         }
     }
     return bestSeed;
 };
-
 
 
 /* Function extend a given seed in both directions. Function returns a vector containing the number of extended matched
@@ -600,10 +625,10 @@ static inline std::vector<unsigned long> findAndExtendSeed(TText &seed, Index<TT
  * Website: https://github.com/jpalbrecht/SWPraktikum
  */
 template<typename TText, typename TIndex, typename TDistance>
-inline static unsigned long extSeed(TText &seed, Index<TText, TIndex> &index, TText &read,
-                                                 unsigned int &endPos,
-                                                 unsigned long startPosition, unsigned long endPosition,
-                                                 ReadMapperOptions &rmOptions, TDistance) {
+inline static long extSeed(TText &seed, Index<TText, TIndex> &index, TText &read,
+                           unsigned int &endPos,
+                           unsigned long startPosition, unsigned long endPosition,
+                           ReadMapperOptions &rmOptions, TDistance) {
     // necessary counters and numbers
     Dna5String refGen;
     unsigned long seedLength = length(seed);
@@ -617,9 +642,8 @@ inline static unsigned long extSeed(TText &seed, Index<TText, TIndex> &index, TT
     // call of wrapper Function
     extendWrapper(seed1, refGen, read, rmOptions, TDistance());
     // return score
-    return (endPositionH(seed1) - beginPositionH(seed1));
+    return (long) (endPositionH(seed1) - beginPositionH(seed1));
 };
-
 
 
 /* Function to process a set of given reads. This Function cuts each read in variable number of seeds (seed-length
@@ -655,8 +679,9 @@ inline static unsigned long extSeed(TText &seed, Index<TText, TIndex> &index, TT
  */
 
 template<typename TText, typename TIndex, typename TDistance>
-inline static std::vector<BamAlignmentRecord> processReads(StringSet<Dna5String> &reads, ReadMapperOptions &rmOptions,
-                                                           Index<TText, TIndex> &index, TDistance) {
+inline static std::vector<std::vector<BamAlignmentRecord> > processReads(StringSet<Dna5String> &reads,
+                                                                         ReadMapperOptions &rmOptions,
+                                                                         Index<TText, TIndex> &index, TDistance) {
 
 
     // ------------ define objects, counters, etc.
@@ -666,19 +691,30 @@ inline static std::vector<BamAlignmentRecord> processReads(StringSet<Dna5String>
     unsigned long endRefGen;
     unsigned long lengthRead;
     int score;
-    String < CigarElement<> > cig;
+    String<CigarElement<> > cig;
     std::vector<std::vector<unsigned long> > positions;
     std::vector<unsigned long> matched;
-    std::vector<BamAlignmentRecord> bamRecords;
+    std::vector<std::vector<BamAlignmentRecord> > bamRecords;
 
 
 
     // ------------ loop over Reads
+    // parallelisation
+    for (unsigned i = 1; i <= rmOptions.threads; ++i) {
+        std::vector<BamAlignmentRecord> bamRecord;
+        bamRecords.push_back(bamRecord);
+    }
+    omp_set_num_threads(rmOptions.threads);
+
     typedef Iterator<StringSet<Dna5String> >::Type TIterator;
-    for (TIterator readsIt = begin(reads); readsIt != end(reads); ++readsIt) {
-//        std::cout << "processing Element: " << position(readsIt, reads) << ".." << std::endl;
+
+//    for (TIterator readsIt = begin(reads); readsIt != end(reads); ++readsIt) {
+    #pragma omp parallel for shared(bamRecords) private(seed) private(pos) private(lengthRead) private(beginRefGen) private(endRefGen) private(score) private(cig) private(positions) private(matched)
+    for (unsigned indRead = 0; indRead < length(reads); ++indRead) {
+
+//        std::cout << "processing Element: " << position(indRead, reads) << ".." << std::endl;
         // defining bestSeed Vector for each read
-        std::vector<unsigned long> bestSeed(3, 0);
+        std::vector<long> bestSeed(3, -1);
         pos = 0;
 
 
@@ -686,70 +722,67 @@ inline static std::vector<BamAlignmentRecord> processReads(StringSet<Dna5String>
         // ------------ cut in small seeds
         // Loop through seeds
         typedef Iterator<Dna5String>::Type TIterator;
-        for (TIterator seedIt = begin(*readsIt); seedIt != end(*readsIt);) {
+        for (TIterator seedIt = begin(reads[indRead]); seedIt != end(reads[indRead]);) {
             // if rest of read is bigger than 10 letters
-            if ((seedIt + rmOptions.seedLen) <= end(*readsIt)) {
+            if ((seedIt + rmOptions.seedLen) <= end(reads[indRead])) {
                 seed = infix(*seedIt, seedIt, seedIt + rmOptions.seedLen);
                 seedIt += rmOptions.seedLen;
                 pos += rmOptions.seedLen;
 //                std::cout << "Searching for Seed: " << seed << std::endl;
                 // Discard this part ?... could just be one letter... not good to search in Genome!
             } else { // if rest is not bigger than 10 letters
-                // trotzdem suchen und schauen wieviel hits ich habe und nach threshold aussortieren.
-//              seed = infix(*readIt, readIt, end(*readsIt));
-                seedIt = end(*readsIt);
-//              std::cout << "Searching for Seed: " << seed << std::endl;
                 break;
             }
 
 
 
             // ------------ find & extend & get best seed
-            bestSeed = findAndExtendSeed(seed, index, *readsIt, pos, rmOptions, bestSeed,TDistance());
+            bestSeed = findAndExtendSeed(seed, index, reads[indRead], pos, rmOptions, bestSeed, TDistance());
         } // next seed of read
+        // catch nothing found
+        if (bestSeed.at(0) != -1) {
 
 
 
-        // ------------ perform semi-global Alignment for each Read at position of best seed
-        lengthRead = length(*readsIt);
-        // referenceGenome in Match Region
-        beginRefGen = (bestSeed.at(0) >= lengthRead) ? bestSeed.at(0) - lengthRead : 0;
-        endRefGen = (bestSeed.at(1) + lengthRead < length(index)) ? bestSeed.at(1) + lengthRead : length(index);
-        typedef Align<Dna5String, ArrayGaps> TAlign;
-        TAlign align;
-        resize(rows(align), 2);
-        assignSource(row(align, 0), infix(indexText(index), beginRefGen, endRefGen));
-        assignSource(row(align, 1), *readsIt);
-        // do alignment & get score
-        score = globalAlignment(align, rmOptions.alignScheme);
-//        std::cout << align << std::endl;
-//        std::cout << "Score: " << score << std::endl;
-//        std::cout << "" << std::endl;
+            // ------------ perform semi-global Alignment for each Read at position of best seed
+            lengthRead = length(reads[indRead]);
+            // referenceGenome in Match Region
+            beginRefGen = (bestSeed.at(0) >= lengthRead) ? bestSeed.at(0) - lengthRead : 0;
+            endRefGen = (bestSeed.at(1) + lengthRead < length(index)) ? bestSeed.at(1) + lengthRead : length(index);
+            typedef Align<TText, ArrayGaps> TAlign;
+            TAlign align;
+            resize(rows(align), 2);
+            assignSource(row(align, 0), infix(indexText(index), beginRefGen, endRefGen));
+            assignSource(row(align, 1), reads[indRead]);
+            // do alignment & get score
+            score = globalAlignment(align, rmOptions.alignScheme);
+//          std::cout << align << std::endl;
+//          std::cout << "Score: " << score << std::endl;
+//          std::cout << "" << std::endl;
 
 
 
-        // ------------ determine CIGAR Format
-        cig = getCigar(align);
+            // ------------ determine CIGAR Format
+            cig = getCigar(align);
 
 
 
-        // ------------ Create AlignmentRecord for BAM-File & write in File
-        BamAlignmentRecord bamAlignmentRecord;
-        // set recordFlags for read
-        char name[10];
-        sprintf(name, "%s%ld", "Read_", position(readsIt, reads));
-        bamAlignmentRecord.qName = name;                                 // Record Name
-        bamAlignmentRecord.flag = (uint32_t) position(readsIt, reads);   // Record Number
-        bamAlignmentRecord.beginPos = (int32_t) bestSeed.at(0);          // Position in RefGen
-        bamAlignmentRecord.cigar = cig;                                  // Alignment CIGAR
-        bamAlignmentRecord.seq = *readsIt;                               // Read sequence
-        bamRecords.push_back(bamAlignmentRecord);
-
+            // ------------ Create AlignmentRecord for BAM-File & write in File
+            BamAlignmentRecord bamAlignmentRecord;
+            // set recordFlags for read
+            char name[10];
+            sprintf(name, "%s%ld", "Read_", (long)indRead);
+            bamAlignmentRecord.qName = name;                                 // Record Name
+            bamAlignmentRecord.flag = (uint32_t) indRead;   // Record Number
+            bamAlignmentRecord.beginPos = (int32_t) bestSeed.at(0);          // Position in RefGen
+            bamAlignmentRecord.cigar = cig;                                  // Alignment CIGAR
+            bamAlignmentRecord.seq = reads[indRead];                               // Read sequence
+            bamRecords.at(omp_get_thread_num()).push_back(bamAlignmentRecord);
+        }
     }// next read
 
     return bamRecords;
 }
-
 
 
 /* Main Function of ReadMapper Project
@@ -801,78 +834,84 @@ int main(int argc, char const **argv) {
         rmOptions.inRef = outRef;
     }
 
+    // check for buildIndexOnly parameter
+    if (!rmOptions.buildIndexOnly) {
+        //------------ Read Index & Reads
+        std::cout << "Loading Index.." << std::endl;
+        // load Index from disk
+        Index<Dna5String, IndexSa<> > saIndex;
+        open(saIndex, toCString(rmOptions.inRef));
+        std::cout << "Index loaded!" << std::endl;
 
 
-    //------------ Read Index & Reads
-    std::cout << "Loading Index.." << std::endl;
-    // load Index from disk
-    Index < Dna5String, IndexSa<> > saIndex;
-    open(saIndex, toCString(rmOptions.inRef));
-    std::cout << "Index loaded!" << std::endl;
+
+        //------------ read Reads-Records
+        std::cout << "Reading Reads.." << std::endl;
+        SeqFileIn rFileIn;
+        if (!open(rFileIn, toCString(rmOptions.inReads))) {
+            std::cerr << "ERROR: Could not read Reads-File!" << std::endl;
+        }
+        StringSet<Dna5String> reads;
+        StringSet<CharString> heads;
+        try {
+            // try to read all records
+            readRecords(heads, reads, rFileIn);
+        } catch (IOError io) {
+            std::cerr << "ERROR: " << io.what() << std::endl;
+        } catch (ParseError p) {
+            std::cerr << "ERROR: " << p.what() << std::endl;
+        }
+        std::cout << "Reads read!" << std::endl;
 
 
 
-    //------------ read Reads-Records
-    std::cout << "Reading Reads.." << std::endl;
-    SeqFileIn rFileIn;
-    if (!open(rFileIn, toCString(rmOptions.inReads))) {
-        std::cerr << "ERROR: Could not read Reads-File!" << std::endl;
+        //------------ Processing reads
+        std::cout << "Processing.." << std::endl;
+        std::vector<std::vector<BamAlignmentRecord> > bamRecords;
+        if (!rmOptions.levenshtein) {
+            bamRecords = processReads(reads, rmOptions, saIndex, Hamming());
+        } else {
+            bamRecords = processReads(reads, rmOptions, saIndex, Levenshtein());
+        }
+        std::cout << "Processed!" << std::endl;
+
+
+
+        //------------  define files for writing out & write Header
+        std::cout << "Writing BAM.." << std::endl;
+        BamFileIn bamFileIn;
+        std::ofstream bamFile;
+        bamFile.open(toCString(rmOptions.outSam));
+        BamFileOut bamFileOut(context(bamFileIn), bamFile, Sam());
+        // Header for BAM File
+        BamHeader bamHeader;
+        BamHeaderRecord bamHeaderRecord;
+        setTagValue("VN", "1.3", bamHeaderRecord);
+        setTagValue("SO", "unsorted", bamHeaderRecord);
+        setTagValue("SN", "ref", bamHeaderRecord);
+        char len[10];
+        sprintf(len, "%ld", length(saIndex));
+        setTagValue("LN", len, bamHeaderRecord);
+        assign(bamHeader, bamHeaderRecord);
+        // write in File
+        writeHeader(bamFileOut, bamHeader);
+
+
+        // ------------ write alignment-records in File & close
+        // Iterat over vectors containing vectors of BamRecords
+        std::vector<std::vector<BamAlignmentRecord> >::iterator itBamRecords;
+        for (itBamRecords = bamRecords.begin(); itBamRecords != bamRecords.end(); ++itBamRecords) {
+            std::vector<BamAlignmentRecord>::iterator itBamRecord;
+            for (itBamRecord = (*itBamRecords).begin(); itBamRecord != (*itBamRecords).end(); ++itBamRecord) {
+                writeRecord(bamFileOut, *itBamRecord);
+            }
+        }
+        bamFile.close();
+        std::cout << "BAM written!" << std::endl;
     }
-    StringSet < Dna5String > reads;
-    StringSet < CharString > heads;
-    try {
-        // try to read all records
-        readRecords(heads, reads, rFileIn);
-    } catch (IOError io) {
-        std::cerr << "ERROR: " << io.what() << std::endl;
-    } catch (ParseError p) {
-        std::cerr << "ERROR: " << p.what() << std::endl;
-    }
-    std::cout << "Reads read!" << std::endl;
-
-
-
-    //------------ Processing reads
-    std::cout << "Processing.." << std::endl;
-    std::vector<BamAlignmentRecord> bamRecords;
-    if (!rmOptions.levenshtein) {
-        bamRecords = processReads(reads, rmOptions, saIndex, Hamming());
-    } else {
-        bamRecords = processReads(reads, rmOptions, saIndex, Levenshtein());
-    }
-    std::cout << "Processed!" << std::endl;
-
-
-
-    //------------  define files for writing out & write Header
-    std::cout << "Writing BAM.." << std::endl;
-    BamFileIn bamFileIn;
-    std::ofstream bamFile;
-    bamFile.open(toCString(rmOptions.outSam));
-    BamFileOut bamFileOut(context(bamFileIn), bamFile, Sam());
-    // Header for BAM File
-    BamHeader bamHeader;
-    BamHeaderRecord bamHeaderRecord;
-    setTagValue("VN", "1.3", bamHeaderRecord);
-    setTagValue("SO", "unsorted", bamHeaderRecord);
-    setTagValue("SN", "ref", bamHeaderRecord);
-    char len[10];
-    sprintf(len, "%ld", length(saIndex));
-    setTagValue("LN", len, bamHeaderRecord);
-    assign(bamHeader, bamHeaderRecord);
-    // write in File
-    writeHeader(bamFileOut, bamHeader);
-
-
-    // ------------ write alignment-records in File & close
-    std::vector<BamAlignmentRecord>::iterator itBamRecords;
-    for (itBamRecords = bamRecords.begin(); itBamRecords != bamRecords.end(); ++itBamRecords) {
-        writeRecord(bamFileOut, *itBamRecords);
-    }
-    bamFile.close();
-    std::cout << "BAM written!" << std::endl;
     std::cout << "Finished!" << std::endl;
     duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
     std::cout << "Runtime: " << duration << std::endl;
-    return 1;
+    sleep(1);
+    return EXIT_SUCCESS;
 }
