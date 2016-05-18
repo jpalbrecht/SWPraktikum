@@ -51,7 +51,6 @@ struct ReadMapperOptions {
     bool fmInd;
     bool buildIndexOnly;
     int seedLen;
-    int indexMode;
     int dropout;
     int threads;
     Score<int, Simple> alignScheme;
@@ -59,7 +58,7 @@ struct ReadMapperOptions {
 
 
     ReadMapperOptions() :
-            inRef(""), inReads(""), outSam(""), loadIndex(false), fmInd(false), seedLen(10), indexMode(0),
+            inRef(""), inReads(""), outSam(""), loadIndex(false), fmInd(false), seedLen(10),
             levenshtein(false), alignScheme(1, -1, 0, -1), dropout(3), extendScheme(2, -1, -1, -2), threads(1) { }
 
 };
@@ -561,22 +560,31 @@ static inline std::vector<long> findAndExtendSeed(TText &seed, Index<TText, TInd
                                                   TText &read, unsigned int &endPos,
                                                   ReadMapperOptions &rmOptions,
                                                   std::vector<long> &bestSeed, TDistance) {
-    // Pattern & Finder & score
-    Pattern<TText> pat(seed);
-    Finder<Index<TText, TIndex> > finder(index);
-    long score;
-    while (find(finder, pat)) {
-//                std::cout << '[' << beginPosition(finder) << '.' << endPosition(finder) << ']' << std::endl;
-        // extend founded seed
-        score = extSeed(seed, index, read, endPos, beginPosition(finder), endPosition(finder), rmOptions,
-                        TDistance());
-        // safe best score & seed if better than seed before
-        if (score > bestSeed.back()) {
-            bestSeed.at(0) = (long) beginPosition(finder);
-            bestSeed.at(1) = (long) endPosition(finder);
-            bestSeed.at(2) = score;
+    // Pattern
+     StringSet<Dna5String> pat;
+    appendValue(pat, seed);
+
+    typedef typename Iterator<StringSet<Dna5String> const, Rooted>::Type TPatternsIt;
+    typedef typename Iterator<Index<TText, TIndex>, TopDown<> >::Type TIndexIt;
+    // lambda-function. Is called each time find-function finds pattern in text
+    auto delegate = [&seed, &index, &read, &endPos, &bestSeed, &rmOptions](TIndexIt const &it,
+                                                                           TPatternsIt const &patternsIt,
+                                                                           unsigned /*score*/) {
+        auto pattern_len = length(*patternsIt);
+        // loop through occurences of pattern in text
+        for (auto &occ: getOccurrences(it)) {
+            // calculate end positions
+            long begin = getSeqOffset(occ);
+            long end = begin + pattern_len;
+            long score = extSeed(seed, index, read, endPos, begin, end, rmOptions, TDistance());
+            if (score > bestSeed.back()) {
+                bestSeed.at(0) = (long) begin;
+                bestSeed.at(1) = (long) end;
+                bestSeed.at(2) = score;
+            }
         }
-    }
+    };
+    find(index, pat, 0, delegate, Backtracking<EditDistance>());
     return bestSeed;
 };
 
@@ -708,11 +716,11 @@ inline static std::vector<std::vector<BamAlignmentRecord> > processReads(StringS
 
     typedef Iterator<StringSet<Dna5String> >::Type TIterator;
 
-//    for (TIterator readsIt = begin(reads); readsIt != end(reads); ++readsIt) {
-    #pragma omp parallel for shared(bamRecords) private(seed) private(pos) private(lengthRead) private(beginRefGen) private(endRefGen) private(score) private(cig) private(positions) private(matched)
+#pragma omp parallel for shared(bamRecords) private(seed) private(pos) private(lengthRead) private(beginRefGen) private(endRefGen) private(score) private(cig) private(positions) private(matched)
     for (unsigned indRead = 0; indRead < length(reads); ++indRead) {
-
-//        std::cout << "processing Element: " << position(indRead, reads) << ".." << std::endl;
+#ifdef verbose
+        std::cout << "processing Element: " << position(indRead, reads) << ".." << std::endl;
+#endif
         // defining bestSeed Vector for each read
         std::vector<long> bestSeed(3, -1);
         pos = 0;
@@ -728,7 +736,9 @@ inline static std::vector<std::vector<BamAlignmentRecord> > processReads(StringS
                 seed = infix(*seedIt, seedIt, seedIt + rmOptions.seedLen);
                 seedIt += rmOptions.seedLen;
                 pos += rmOptions.seedLen;
-//                std::cout << "Searching for Seed: " << seed << std::endl;
+#ifdef verbose
+                std::cout << "Searching for Seed: " << seed << std::endl;
+#endif
                 // Discard this part ?... could just be one letter... not good to search in Genome!
             } else { // if rest is not bigger than 10 letters
                 break;
@@ -756,10 +766,12 @@ inline static std::vector<std::vector<BamAlignmentRecord> > processReads(StringS
             assignSource(row(align, 1), reads[indRead]);
             // do alignment & get score
             score = globalAlignment(align, rmOptions.alignScheme);
-//          std::cout << align << std::endl;
-//          std::cout << "Score: " << score << std::endl;
-//          std::cout << "" << std::endl;
-
+            //score = globalAlignment(align, MyersHirschberg());
+#ifdef verbose
+            std::cout << align << std::endl;
+            std::cout << "Score: " << score << std::endl;
+            std::cout << "" << std::endl;
+#endif
 
 
             // ------------ determine CIGAR Format
@@ -771,7 +783,7 @@ inline static std::vector<std::vector<BamAlignmentRecord> > processReads(StringS
             BamAlignmentRecord bamAlignmentRecord;
             // set recordFlags for read
             char name[10];
-            sprintf(name, "%s%ld", "Read_", (long)indRead);
+            sprintf(name, "%s%ld", "Read_", (long) indRead);
             bamAlignmentRecord.qName = name;                                 // Record Name
             bamAlignmentRecord.flag = (uint32_t) indRead;   // Record Number
             bamAlignmentRecord.beginPos = (int32_t) bestSeed.at(0);          // Position in RefGen
@@ -810,7 +822,7 @@ int main(int argc, char const **argv) {
     std::clock_t start;
     double duration;
     start = std::clock();
-
+#define verbose = 1;
 
 
     //------------ Parsing Arguments from Command Line
