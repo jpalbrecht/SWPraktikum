@@ -584,7 +584,7 @@ static inline std::vector<long> findAndExtendSeed(TText &seed, Index<TText, TInd
             }
         }
     };
-    find(index, pat, 0, delegate, Backtracking<EditDistance>());
+    find(index, pat, 1, delegate, Backtracking<EditDistance>());
     return bestSeed;
 };
 
