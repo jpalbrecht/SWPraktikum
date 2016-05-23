@@ -290,7 +290,7 @@ inline static std::vector<long> searchWrapper(TText &seed, StringSet<TText> &pat
             }
         }
     };
-    find(index, pat, 1, delegate, Backtracking<HammingDistance>());;
+    find(index, pat, rmOptions.approxSearch, delegate, Backtracking<HammingDistance>());;
     return bestSeed;
 }
 
