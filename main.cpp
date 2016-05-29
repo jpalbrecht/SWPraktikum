@@ -92,6 +92,15 @@ struct XDrop {
     XDrop() { }
 };
 
+/* Struct to set IndexMode Object in runtime */
+struct FMind {
+    FMind() { }
+};
+
+/* Struct to set IndexMode Object in runtime */
+struct SAind {
+    SAind() { }
+};
 
 /* Function to call the extendSeed-Function with to runtime specialized options
  *
@@ -212,9 +221,10 @@ inline static std::vector<long> searchWrapper(TText &seed, StringSet<TText> &pat
                                                                            unsigned /*score*/) {
         auto pattern_len = length(*patternsIt);
         // loop through occurences of pattern in text
-        for (auto &occ: getOccurrences(it)) {
+        for (unsigned i = 0; i < length(getOccurrences(it)); ++i){
+        //for (auto &occ: getOccurrences(it)) {
             // calculate end positions
-            long begin = getSeqOffset(occ);
+            long begin = getSeqOffset(getOccurrences(it)[i]);
             long end = begin + pattern_len;
             long score = extSeed(seed, index, read, endPos, begin, end, rmOptions, TExtendMode());
             if (score > bestSeed.back()) {
@@ -278,9 +288,10 @@ inline static std::vector<long> searchWrapper(TText &seed, StringSet<TText> &pat
                                                                            unsigned /*score*/) {
         auto pattern_len = length(*patternsIt);
         // loop through occurences of pattern in text
-        for (auto &occ: getOccurrences(it)) {
-            // calculate end positions
-            long begin = getSeqOffset(occ);
+        for (unsigned i = 0; i < length(getOccurrences(it)); ++i){
+        //for (auto &occ: getOccurrences(it)) {
+            // calculate end positionsgetOccurrences(it)[i]
+            long begin = getSeqOffset(getOccurrences(it)[i]);
             long end = begin + pattern_len;
             long score = extSeed(seed, index, read, endPos, begin, end, rmOptions, TExtendMode());
             if (score > bestSeed.back()) {
@@ -568,6 +579,72 @@ static inline int buildIndex(std::string &fileIn, std::string &fileOut, ReadMapp
         std::cout << "Index saved!" << std::endl;
     }
     return 1;
+};
+
+
+/* Function load a index-file from disk
+ *
+ * Syntax:
+ *   Index<TText, IndexSa<> > loadIndex(ReadMapperOptions &rmOptions, SAind )
+ *
+ * Inputs:
+ *   ReadMapperOptions rmOptions   - read mapper program option object
+ *   SAind                         - object of SAind struct
+ *
+ * Outputs:
+ *  Index<TText, IndexSa<> >  - SA-index
+ *
+ * Example:
+ *   Index<TText, IndexSa<> > index = loadIndex(rmOptions, SAind());
+ *
+ * Other header files required:
+ * Subfunctions: none
+ *
+ * See also:
+ * Author: Jan Philipp Albrecht
+ * Work address:
+ * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
+ * Website: https://github.com/jpalbrecht/SWPraktikum
+ */
+template<typename TText>
+static inline Index<TText, IndexSa<> > loadIndex(ReadMapperOptions &rmOptions, SAind /**/){
+    Index<TText, IndexSa<> > saIndex;
+    open(saIndex, toCString(rmOptions.inRef));
+    std::cout << "Index loaded!" << std::endl;
+    return saIndex;
+};
+
+
+/* Function load a index-file from disk
+ *
+ * Syntax:
+ *   Index<TText, FMIndex<> > loadIndex(ReadMapperOptions &rmOptions, FMind )
+ *
+ * Inputs:
+ *   ReadMapperOptions rmOptions   - read mapper program option object
+ *   FMind                         - object of FMind struct
+ *
+ * Outputs:
+ *  Index<TText, FMIndex<> >  - FM-index
+ *
+ * Example:
+ *   Index<TText, FMIndex<> > index = loadIndex(rmOptions, FMind());
+ *
+ * Other header files required:
+ * Subfunctions: none
+ *
+ * See also:
+ * Author: Jan Philipp Albrecht
+ * Work address:
+ * email: jan-philipp.albrecht@charite.de, j.p.albrecht@fu-berlin.de
+ * Website: https://github.com/jpalbrecht/SWPraktikum
+ */
+template<typename TText>
+static inline Index<TText, FMIndex<> > loadIndex(ReadMapperOptions &rmOptions, FMind /**/){
+    Index<TText, FMIndex<> > saIndex;
+    open(saIndex, toCString(rmOptions.inRef));
+    std::cout << "Index loaded!" << std::endl;
+    return saIndex;
 };
 
 
@@ -887,6 +964,172 @@ inline static std::vector<std::vector<BamAlignmentRecord> > processReads(StringS
     return bamRecords;
 }
 
+inline static void processMap(ReadMapperOptions &rmOptions, SAind /**/){
+    //------------ Read Index & Reads
+    std::cout << "Loading Index.." << std::endl;
+    // load Index from disk
+    Index<Dna5String, IndexSa<> > saIndex;
+    open(saIndex, toCString(rmOptions.inRef));
+    std::cout << "Index loaded!" << std::endl;
+
+
+    //------------ read Reads-Records
+    std::cout << "Reading Reads.." << std::endl;
+    SeqFileIn rFileIn;
+    if (!open(rFileIn, toCString(rmOptions.inReads))) {
+        std::cerr << "ERROR: Could not read Reads-File!" << std::endl;
+    }
+    StringSet<Dna5String> reads;
+    StringSet<CharString> heads;
+    try {
+        // try to read all records
+        readRecords(heads, reads, rFileIn);
+    } catch (IOError io) {
+        std::cerr << "ERROR: " << io.what() << std::endl;
+    } catch (ParseError p) {
+        std::cerr << "ERROR: " << p.what() << std::endl;
+    }
+    std::cout << "Reads read!" << std::endl;
+
+
+
+    //------------ Processing reads
+    std::cout << "Processing.." << std::endl;
+    std::vector<std::vector<BamAlignmentRecord> > bamRecords;
+    if (!rmOptions.levenshtein) {
+        if(!rmOptions.matchExtend){
+            bamRecords = processReads(reads, rmOptions, saIndex, XDrop(), Hamming());
+        }else {
+            bamRecords = processReads(reads, rmOptions, saIndex, MatchExt(), Hamming());
+        }
+
+    } else {
+        if(!rmOptions.matchExtend){
+            bamRecords = processReads(reads, rmOptions, saIndex, XDrop(), Levenshtein());
+        }else {
+            bamRecords = processReads(reads, rmOptions, saIndex, MatchExt(), Levenshtein());
+        }
+    }
+    std::cout << "Processed!" << std::endl;
+
+
+
+    //------------  define files for writing out & write Header
+    std::cout << "Writing BAM.." << std::endl;
+    BamFileIn bamFileIn;
+    std::ofstream bamFile;
+    bamFile.open(toCString(rmOptions.outSam));
+    BamFileOut bamFileOut(context(bamFileIn), bamFile, Sam());
+    // Header for BAM File
+    BamHeader bamHeader;
+    BamHeaderRecord bamHeaderRecord;
+    setTagValue("VN", "1.3", bamHeaderRecord);
+    setTagValue("SO", "unsorted", bamHeaderRecord);
+    setTagValue("SN", "ref", bamHeaderRecord);
+    char len[10];
+    sprintf(len, "%ld", length(saIndex));
+    setTagValue("LN", len, bamHeaderRecord);
+    assign(bamHeader, bamHeaderRecord);
+    // write in File
+    writeHeader(bamFileOut, bamHeader);
+
+
+    // ------------ write alignment-records in File & close
+    // Iterat over vectors containing vectors of BamRecords
+    std::vector<std::vector<BamAlignmentRecord> >::iterator itBamRecords;
+    for (itBamRecords = bamRecords.begin(); itBamRecords != bamRecords.end(); ++itBamRecords) {
+        std::vector<BamAlignmentRecord>::iterator itBamRecord;
+        for (itBamRecord = (*itBamRecords).begin(); itBamRecord != (*itBamRecords).end(); ++itBamRecord) {
+            writeRecord(bamFileOut, *itBamRecord);
+        }
+    }
+    bamFile.close();
+    std::cout << "BAM written!" << std::endl;
+}
+
+inline static void processMap(ReadMapperOptions &rmOptions, FMind /**/){
+    //------------ Read Index & Reads
+    std::cout << "Loading Index.." << std::endl;
+    // load Index from disk
+    Index<Dna5String, FMIndex<> > saIndex;
+    open(saIndex, toCString(rmOptions.inRef));
+    std::cout << "Index loaded!" << std::endl;
+
+
+    //------------ read Reads-Records
+    std::cout << "Reading Reads.." << std::endl;
+    SeqFileIn rFileIn;
+    if (!open(rFileIn, toCString(rmOptions.inReads))) {
+        std::cerr << "ERROR: Could not read Reads-File!" << std::endl;
+    }
+    StringSet<Dna5String> reads;
+    StringSet<CharString> heads;
+    try {
+        // try to read all records
+        readRecords(heads, reads, rFileIn);
+    } catch (IOError io) {
+        std::cerr << "ERROR: " << io.what() << std::endl;
+    } catch (ParseError p) {
+        std::cerr << "ERROR: " << p.what() << std::endl;
+    }
+    std::cout << "Reads read!" << std::endl;
+
+
+
+    //------------ Processing reads
+    std::cout << "Processing.." << std::endl;
+    std::vector<std::vector<BamAlignmentRecord> > bamRecords;
+    if (!rmOptions.levenshtein) {
+        if(!rmOptions.matchExtend){
+            bamRecords = processReads(reads, rmOptions, saIndex, XDrop(), Hamming());
+        }else {
+            bamRecords = processReads(reads, rmOptions, saIndex, MatchExt(), Hamming());
+        }
+
+    } else {
+        if(!rmOptions.matchExtend){
+            bamRecords = processReads(reads, rmOptions, saIndex, XDrop(), Levenshtein());
+        }else {
+            bamRecords = processReads(reads, rmOptions, saIndex, MatchExt(), Levenshtein());
+        }
+    }
+    std::cout << "Processed!" << std::endl;
+
+
+
+    //------------  define files for writing out & write Header
+    std::cout << "Writing BAM.." << std::endl;
+    BamFileIn bamFileIn;
+    std::ofstream bamFile;
+    bamFile.open(toCString(rmOptions.outSam));
+    BamFileOut bamFileOut(context(bamFileIn), bamFile, Sam());
+    // Header for BAM File
+    BamHeader bamHeader;
+    BamHeaderRecord bamHeaderRecord;
+    setTagValue("VN", "1.3", bamHeaderRecord);
+    setTagValue("SO", "unsorted", bamHeaderRecord);
+    setTagValue("SN", "ref", bamHeaderRecord);
+    char len[10];
+    sprintf(len, "%ld", length(saIndex));
+    setTagValue("LN", len, bamHeaderRecord);
+    assign(bamHeader, bamHeaderRecord);
+    // write in File
+    writeHeader(bamFileOut, bamHeader);
+
+
+    // ------------ write alignment-records in File & close
+    // Iterat over vectors containing vectors of BamRecords
+    std::vector<std::vector<BamAlignmentRecord> >::iterator itBamRecords;
+    for (itBamRecords = bamRecords.begin(); itBamRecords != bamRecords.end(); ++itBamRecords) {
+        std::vector<BamAlignmentRecord>::iterator itBamRecord;
+        for (itBamRecord = (*itBamRecords).begin(); itBamRecord != (*itBamRecords).end(); ++itBamRecord) {
+            writeRecord(bamFileOut, *itBamRecord);
+        }
+    }
+    bamFile.close();
+    std::cout << "BAM written!" << std::endl;
+}
+
 
 /* Main Function of ReadMapper Project
  *
@@ -938,87 +1181,11 @@ int main(int argc, char const **argv) {
 
     // check for buildIndexOnly parameter
     if (!rmOptions.buildIndexOnly) {
-        //------------ Read Index & Reads
-        std::cout << "Loading Index.." << std::endl;
-        // load Index from disk
-        Index<Dna5String, IndexSa<> > saIndex;
-        open(saIndex, toCString(rmOptions.inRef));
-        std::cout << "Index loaded!" << std::endl;
-
-
-
-        //------------ read Reads-Records
-        std::cout << "Reading Reads.." << std::endl;
-        SeqFileIn rFileIn;
-        if (!open(rFileIn, toCString(rmOptions.inReads))) {
-            std::cerr << "ERROR: Could not read Reads-File!" << std::endl;
+        if (!rmOptions.fmInd){
+            processMap(rmOptions, SAind());
+        }else {
+            processMap(rmOptions, FMind());
         }
-        StringSet<Dna5String> reads;
-        StringSet<CharString> heads;
-        try {
-            // try to read all records
-            readRecords(heads, reads, rFileIn);
-        } catch (IOError io) {
-            std::cerr << "ERROR: " << io.what() << std::endl;
-        } catch (ParseError p) {
-            std::cerr << "ERROR: " << p.what() << std::endl;
-        }
-        std::cout << "Reads read!" << std::endl;
-
-
-
-        //------------ Processing reads
-        std::cout << "Processing.." << std::endl;
-        std::vector<std::vector<BamAlignmentRecord> > bamRecords;
-        if (!rmOptions.levenshtein) {
-            if(!rmOptions.matchExtend){
-                bamRecords = processReads(reads, rmOptions, saIndex, XDrop(), Hamming());
-            }else {
-                bamRecords = processReads(reads, rmOptions, saIndex, MatchExt(), Hamming());
-            }
-
-        } else {
-            if(!rmOptions.matchExtend){
-                bamRecords = processReads(reads, rmOptions, saIndex, XDrop(), Levenshtein());
-            }else {
-                bamRecords = processReads(reads, rmOptions, saIndex, MatchExt(), Levenshtein());
-            }
-        }
-        std::cout << "Processed!" << std::endl;
-
-
-
-        //------------  define files for writing out & write Header
-        std::cout << "Writing BAM.." << std::endl;
-        BamFileIn bamFileIn;
-        std::ofstream bamFile;
-        bamFile.open(toCString(rmOptions.outSam));
-        BamFileOut bamFileOut(context(bamFileIn), bamFile, Sam());
-        // Header for BAM File
-        BamHeader bamHeader;
-        BamHeaderRecord bamHeaderRecord;
-        setTagValue("VN", "1.3", bamHeaderRecord);
-        setTagValue("SO", "unsorted", bamHeaderRecord);
-        setTagValue("SN", "ref", bamHeaderRecord);
-        char len[10];
-        sprintf(len, "%ld", length(saIndex));
-        setTagValue("LN", len, bamHeaderRecord);
-        assign(bamHeader, bamHeaderRecord);
-        // write in File
-        writeHeader(bamFileOut, bamHeader);
-
-
-        // ------------ write alignment-records in File & close
-        // Iterat over vectors containing vectors of BamRecords
-        std::vector<std::vector<BamAlignmentRecord> >::iterator itBamRecords;
-        for (itBamRecords = bamRecords.begin(); itBamRecords != bamRecords.end(); ++itBamRecords) {
-            std::vector<BamAlignmentRecord>::iterator itBamRecord;
-            for (itBamRecord = (*itBamRecords).begin(); itBamRecord != (*itBamRecords).end(); ++itBamRecord) {
-                writeRecord(bamFileOut, *itBamRecord);
-            }
-        }
-        bamFile.close();
-        std::cout << "BAM written!" << std::endl;
     }
     std::cout << "Finished!" << std::endl;
     duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
